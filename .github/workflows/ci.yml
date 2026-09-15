@@ -1,0 +1,49 @@
+# @frost-ui/* が npm 公開されるまでは隣に design-system を checkout して link: を成立させる。
+# 公開後は design-system の checkout と working-directory 指定を外し、通常の 1 リポ構成に戻す。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shaders-art
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: shaders-art
+
+      - uses: actions/checkout@v4
+        with:
+          repository: unz47/design-system
+          path: design-system
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: shaders-art/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: shaders-art/.nvmrc
+          cache: pnpm
+          cache-dependency-path: shaders-art/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 型 / lint
+        run: pnpm verify
+
+      - name: テスト
+        run: pnpm test
+
+      - name: 静的ビルド
+        run: pnpm build

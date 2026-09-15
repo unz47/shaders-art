@@ -1,0 +1,64 @@
+# main への push で GitHub Pages に静的エクスポートを配置する。
+# カスタムドメイン(shaders.art)を当てるまでは /shaders-art 配下で配信されるので BASE_PATH を渡す。
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shaders-art
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: shaders-art
+
+      - uses: actions/checkout@v4
+        with:
+          repository: unz47/design-system
+          path: design-system
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: shaders-art/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: shaders-art/.nvmrc
+          cache: pnpm
+          cache-dependency-path: shaders-art/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 静的ビルド
+        run: pnpm build
+        env:
+          BASE_PATH: /shaders-art
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: shaders-art/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
