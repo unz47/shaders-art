@@ -8,8 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // frost-ui の既定は Dark。Figma の Home は Light を前提にしているので固定する
   return (
-    <html lang="ja">
+    <html lang="ja" data-theme="light">
       <body className="bg-bg-base text-text-primary">
         <MockProvider>{children}</MockProvider>
       </body>
