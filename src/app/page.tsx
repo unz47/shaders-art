@@ -1,17 +1,17 @@
-import { Header } from "@/components/Header";
-import { WorkCard, type Work } from "@/components/WorkCard";
+"use client";
 
-// Step 1: ここに 6 件ぶんの仮データを書く
-const works: Work[] = [
-  { slug: "plasma", title: "Plasma", author: "tomoya", bytes: 216, license: "CC0-1.0" },
-  { slug: "frost-rings", title: "Frost Rings", author: "tomoya", bytes: 330, license: "CC0-1.0" },
-  { slug: "voronoi", title: "Voronoi Snow", author: "tomoya", bytes: 526, license: "CC0-1.0" },
-  { slug: "tunnel", title: "Silver Tunnel", author: "tomoya", bytes: 373, license: "CC0-1.0" },
-  { slug: "clouds", title: "Snow Clouds", author: "tomoya", bytes: 555, license: "CC0-1.0" },
-  { slug: "tiny", title: "Tiny", author: "tomoya", bytes: 81, license: "CC0-1.0" },
-];
+import { useEffect, useState } from "react";
+import { Header } from "@/components/Header";
+import { WorkCard } from "@/components/WorkCard";
+import { getWorks, type Work } from "@/lib/works";
 
 export default function Home() {
+  const [works, setWorks] = useState<Work[]>([]);
+
+  useEffect(() => {
+    getWorks("collection").then((items) => setWorks(items));
+  }, []);
+
   return (
     <>
       <Header />

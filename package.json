@@ -31,6 +31,7 @@
     "@types/three": "^0.183.0",
     "eslint": "^9.19.0",
     "eslint-config-next": "^16.2.9",
+    "msw": "^2.15.0",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.0"
@@ -40,5 +41,10 @@
       "@frost-ui/react": "link:../design-system/packages/react",
       "@frost-ui/tokens": "link:../design-system/packages/tokens"
     }
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }
