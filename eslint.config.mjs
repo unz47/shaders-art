@@ -3,7 +3,7 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
 export default defineConfig([
-  { ignores: [".next/**", "out/**", "node_modules/**", "next-env.d.ts"] },
+  { ignores: [".next/**", "out/**", "node_modules/**", "next-env.d.ts", "public/mockServiceWorker.js"] },
   ...nextVitals,
   ...nextTs,
 ]);

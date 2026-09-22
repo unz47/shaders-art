@@ -1,11 +1,25 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Header } from "@/components/Header";
+import { WorkCard } from "@/components/WorkCard";
+import { getWorks, type Work } from "@/lib/works";
+
 export default function Home() {
+  const [works, setWorks] = useState<Work[]>([]);
+
+  useEffect(() => {
+    getWorks("collection").then((items) => setWorks(items));
+  }, []);
+
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-sp-lg px-sp-md">
-      <div className="h-[2px] w-16 bg-accent-default" />
-      <h1 className="text-display-size font-semibold leading-[1.1] tracking-[-0.02em]">
-        shaders.art
-      </h1>
-      <p className="text-body-lg-size text-text-secondary">a museum of fragment shaders</p>
-    </main>
+    <>
+      <Header />
+      <main className="mx-auto max-w-[1440px] px-sp-md py-sp-lg grid grid-cols-1 gap-sp-lg sm:grid-cols-2 lg:grid-cols-3">
+        {works.map((work) => (
+          <WorkCard key={work.slug} work={work} />
+        ))}
+      </main>
+    </>
   );
 }
