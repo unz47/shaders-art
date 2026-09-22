@@ -1,3 +1,4 @@
+import { Header } from "@/components/Header";
 import { WorkCard, type Work } from "@/components/WorkCard";
 
 // Step 1: ここに 6 件ぶんの仮データを書く
@@ -12,11 +13,13 @@ const works: Work[] = [
 
 export default function Home() {
   return (
-    <main className="mx-auto max-w-[1440px] px-sp-md py-sp-lg">
-      {/* Step 1: ここで works.map(...) して WorkCard を並べる */}
-      {works.map((work) => (
-        <WorkCard key={work.slug} work={work} />
-      ))}
-    </main>
+    <>
+      <Header />
+      <main className="mx-auto max-w-[1440px] px-sp-md py-sp-lg grid grid-cols-1 gap-sp-lg sm:grid-cols-2 lg:grid-cols-3">
+        {works.map((work) => (
+          <WorkCard key={work.slug} work={work} />
+        ))}
+      </main>
+    </>
   );
 }
