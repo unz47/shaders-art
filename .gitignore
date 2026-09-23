@@ -5,6 +5,9 @@ out
 .DS_Store
 next-env.d.ts
 
+# infra/(CDK)のビルド出力。cdk synth/deploy のたびに作り直される
+cdk.out
+
 # next dev が生成する AI エージェント向けファイル。実体は node_modules/next 側にあり、
 # 起動するたびに作り直されるのでコミットしない
 AGENTS.md
