@@ -1,6 +1,13 @@
-import { Stack } from "aws-cdk-lib";
+import { Duration, Stack } from "aws-cdk-lib";
 import type { HttpApi } from "aws-cdk-lib/aws-apigatewayv2";
-import { AllowedMethods, CachePolicy, Distribution } from "aws-cdk-lib/aws-cloudfront";
+import {
+  AllowedMethods,
+  CacheCookieBehavior,
+  CacheHeaderBehavior,
+  CachePolicy,
+  CacheQueryStringBehavior,
+  Distribution,
+} from "aws-cdk-lib/aws-cloudfront";
 import { HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { CfnWebACL } from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
@@ -52,16 +59,29 @@ export class Edge extends Construct {
     const region = Stack.of(this).region;
     const apiDomain = `${api.apiId}.execute-api.${region}.amazonaws.com`;
 
+    // クエリ文字列(tab=collection/new)ごとに別キャッシュにしつつ、短い TTL で
+    // すぐ古くなりすぎないようにする。CACHING_DISABLED(以前の設定)は安全だが、
+    // 毎回オリジンまで取りに行くので遅い。CACHING_OPTIMIZED(既定)はクエリ文字列を
+    // 無視するので tab=collection と tab=new が同じキャッシュ扱いになってしまう
+    const cachePolicy = new CachePolicy(this, "ApiCachePolicy", {
+      comment: "作品データは短時間だけキャッシュする",
+      defaultTtl: Duration.seconds(15),
+      minTtl: Duration.seconds(0),
+      maxTtl: Duration.seconds(60),
+      queryStringBehavior: CacheQueryStringBehavior.all(),
+      headerBehavior: CacheHeaderBehavior.none(),
+      cookieBehavior: CacheCookieBehavior.none(),
+      enableAcceptEncodingGzip: true,
+      enableAcceptEncodingBrotli: true,
+    });
+
     // CloudFront: この Distribution に上の Web ACL を貼り付け、API Gateway を転送先にする
     this.distribution = new Distribution(this, "Distribution", {
       webAclId: webAcl.attrArn,
       defaultBehavior: {
         origin: new HttpOrigin(apiDomain),
         allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        // 既定(CACHING_OPTIMIZED)はクエリ文字列を無視してキャッシュするため、
-        // ?tab=collection と ?tab=new が同じキャッシュとして扱われてしまう。
-        // データが変わる API なのでキャッシュ自体を切る
-        cachePolicy: CachePolicy.CACHING_DISABLED,
+        cachePolicy,
       },
     });
   }
