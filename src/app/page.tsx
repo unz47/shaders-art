@@ -5,10 +5,10 @@ import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Pagination } from "@/components/Pagination";
 import { WorkCard } from "@/components/WorkCard";
-import { getWorks, type Work } from "@/lib/works";
+import { getWorks, type WorkSummary } from "@/lib/works";
 
 export default function Home() {
-  const [works, setWorks] = useState<Work[]>([]);
+  const [works, setWorks] = useState<WorkSummary[]>([]);
 
   useEffect(() => {
     getWorks("collection").then((items) => setWorks(items));
