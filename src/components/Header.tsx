@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Button } from "@frost-ui/react/atoms/button";
 import moonIcon from "@/icons/moon.svg";
 import searchIcon from "@/icons/search.svg";
@@ -9,19 +12,28 @@ import searchIcon from "@/icons/search.svg";
 // Rooms/Edit はまだページが無いので、クリックしても迷子にならないよう
 // 見た目だけ残してリンク化しない。ロゴと Gallery だけ Home に戻れるようにする。
 export function Header() {
+  // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
+  const pathname = usePathname();
+  const galleryActive = pathname === "/" || pathname.startsWith("/s/");
+
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center gap-sp-md border-b border-border-subtle bg-bg-base px-sp-xl backdrop-blur">
       <div className="flex items-center gap-sp-xl">
-        <Link href="/" className="flex items-center gap-sp-xs pl-1">
+        <Link href="/" className="flex items-center gap-sp-xs pl-1 transition-colors hover:opacity-70">
           <span className="h-[2px] w-3.5 bg-accent-default" />
           <span className="text-sm font-medium text-text-primary">shaders.art</span>
         </Link>
         <nav className="flex items-center gap-sp-md text-sm">
-          <Link href="/" className="text-text-primary">
+          <Link
+            href="/"
+            className={`border-b-2 pb-1 text-text-primary transition-colors hover:text-accent-default ${
+              galleryActive ? "border-accent-default" : "border-transparent"
+            }`}
+          >
             Gallery
           </Link>
-          <span className="text-text-secondary">Rooms</span>
-          <span className="text-text-secondary">Edit</span>
+          <span className="border-b-2 border-transparent pb-1 text-text-secondary">Rooms</span>
+          <span className="border-b-2 border-transparent pb-1 text-text-secondary">Edit</span>
         </nav>
       </div>
 
