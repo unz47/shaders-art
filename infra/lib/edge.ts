@@ -1,6 +1,6 @@
 import { Stack } from "aws-cdk-lib";
 import type { HttpApi } from "aws-cdk-lib/aws-apigatewayv2";
-import { AllowedMethods, Distribution } from "aws-cdk-lib/aws-cloudfront";
+import { AllowedMethods, CachePolicy, Distribution } from "aws-cdk-lib/aws-cloudfront";
 import { HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { CfnWebACL } from "aws-cdk-lib/aws-wafv2";
 import { Construct } from "constructs";
@@ -58,6 +58,10 @@ export class Edge extends Construct {
       defaultBehavior: {
         origin: new HttpOrigin(apiDomain),
         allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        // 既定(CACHING_OPTIMIZED)はクエリ文字列を無視してキャッシュするため、
+        // ?tab=collection と ?tab=new が同じキャッシュとして扱われてしまう。
+        // データが変わる API なのでキャッシュ自体を切る
+        cachePolicy: CachePolicy.CACHING_DISABLED,
       },
     });
   }
