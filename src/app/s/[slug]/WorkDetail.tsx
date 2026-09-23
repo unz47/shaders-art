@@ -1,19 +1,18 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { CodeBlock } from "@/components/CodeBlock";
 import { Header } from "@/components/Header";
+import { ShaderStage } from "@/components/ShaderStage";
 import { getWork, type Work } from "@/lib/works";
 
 // 仕様: Figma "Shader / Desktop 1440"(node 41:513)。/edit と同じ「左にコード・
-// 右に描画」の構え。ただし本物のレンダラはまだ無いので、右側は Home と同じ
-// 静止サムネイルを表示するだけ(一時停止・先頭へは見た目だけの飾り)。
+// 右に描画」の構え。右側は ShaderStage(Three.js)で実際に GLSL を動かす。
 // attention(ホバーで演出が変わる仕組み)は Home のカード側の仕様なので、
-// このページでは扱わない。
+// このページでは扱わない(0 固定)。
 
 type State = { status: "loading" } | { status: "missing" } | { status: "found"; work: Work };
 
@@ -96,24 +95,9 @@ export function WorkDetail({ slug }: { slug: string }) {
           <CodeBlock source={work.source} />
         </div>
 
-        {/* 右: ステージ(いまは静止画) */}
+        {/* 右: ステージ(実際に GLSL を描画) */}
         <div className="flex w-full max-w-[45%] flex-col gap-4 overflow-auto border-l border-border-subtle p-4">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle">
-            <Image src={work.thumbnail} alt={work.title} fill className="object-cover" />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" disabled>
-              一時停止
-            </Button>
-            <Button variant="ghost" size="sm" disabled>
-              先頭へ
-            </Button>
-            <div className="flex-1" />
-            <Badge>{work.bytes} bytes</Badge>
-            <Badge>60 fps</Badge>
-            <Badge>0.0 s</Badge>
-          </div>
+          <ShaderStage source={work.source} bytes={work.bytes} />
 
           <div className="flex flex-col gap-2">
             <p className="text-sm text-text-secondary">{work.description}</p>
