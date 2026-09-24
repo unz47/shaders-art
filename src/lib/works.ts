@@ -6,8 +6,8 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
 /** 詳細。GLSL 本体(source)を持つ */
 export type Work = MockWork;
-/** 一覧の 1 件ぶん。source は含まれない */
-export type WorkSummary = Omit<Work, "source">;
+/** 一覧の 1 件ぶん。ホバー再生用に source も含む(詳細と同じ形) */
+export type WorkSummary = Work;
 export type WorksTab = "collection" | "new";
 
 export async function getWorks(tab: WorksTab): Promise<WorkSummary[]> {

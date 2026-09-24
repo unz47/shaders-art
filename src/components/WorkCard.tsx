@@ -1,6 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Card } from "@frost-ui/react/molecules/card";
+import { ShaderThumbnail } from "@/components/ShaderThumbnail";
 import type { WorkSummary } from "@/lib/works";
 
 // 仕様: Figma "Home / Desktop 1440" > ShaderCard(node 8:20 ほか)
@@ -13,7 +13,7 @@ export function WorkCard({ work }: { work: WorkSummary }) {
     <Link href={`/s/${work.slug}/`}>
       <Card className="overflow-hidden rounded-surface border-border-subtle p-0 transition-colors hover:border-border-default">
         <div className="relative aspect-[221/120] w-full">
-          <Image src={work.thumbnail} alt={work.title} fill className="object-cover" />
+          <ShaderThumbnail source={work.source} thumbnail={work.thumbnail} alt={work.title} />
         </div>
         <div className="flex flex-col gap-1.5 p-sp-md">
           <div className="flex items-baseline gap-sp-sm">

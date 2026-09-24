@@ -3,7 +3,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 // server/(ローカル Node + SQLite 版)と同じ API 契約:
-//   GET /api/works?tab=collection|new  → { items: WorkSummary[] }(source を含まない)
+//   GET /api/works?tab=collection|new  → { items: Work[] }(一覧もホバー再生用に source を含む)
 //   GET /api/works/:slug               → Work(source を含む)、無ければ 404
 
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -34,8 +34,7 @@ export async function list(event: APIGatewayProxyEventV2): Promise<APIGatewayPro
   const works = (Items ?? []) as WorkItem[];
 
   const filtered = tab === "collection" ? works.filter((w) => w.collected) : works;
-  const sorted = [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const items = sorted.map(({ source: _source, ...summary }) => summary);
+  const items = [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return json(200, { items });
 }
