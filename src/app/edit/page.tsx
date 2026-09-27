@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { Header } from "@/components/Header";
 import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview, type ShaderEditorStats } from "@/components/ShaderEditorPreview";
@@ -14,6 +15,124 @@ import { ShaderEditorPreview, type ShaderEditorStats } from "@/components/Shader
 // 明記されてる)ので、ここのチェックはあくまで下書き段階の目安。
 
 const STARTER_SOURCE = ["vec4 render(vec2 uv, vec2 p) {", "  return vec4(uv, 0.5, 1.0);", "}"].join("\n");
+
+// プリセット: それぞれ違う技法を示す短い出発点。既存の収蔵作品(Plasmaなど)を
+// そのまま複製すると紛らわしいので、別に用意した簡易版。
+const PRESETS: { id: string; label: string; source: string }[] = [
+  { id: "gradient", label: "グラデーション", source: STARTER_SOURCE },
+  {
+    id: "waves",
+    label: "波",
+    source: ["vec4 render(vec2 uv, vec2 p) {", "  float v = sin((p.x + time) * 6.0) * 0.5 + 0.5;", "  return vec4(vec3(v), 1.0);", "}"].join(
+      "\n",
+    ),
+  },
+  {
+    id: "rings",
+    label: "リング",
+    source: [
+      "vec4 render(vec2 uv, vec2 p) {",
+      "  float r = length(p);",
+      "  float ring = smoothstep(0.05, 0.0, abs(fract(r * 4.0 - time * 0.3) - 0.5) - 0.2);",
+      "  return vec4(vec3(ring), 1.0);",
+      "}",
+    ].join("\n"),
+  },
+  {
+    id: "mouse",
+    label: "マウス",
+    source: [
+      "// uniforms: time, resolution, attention, mouse",
+      "vec4 render(vec2 uv, vec2 p) {",
+      "  float d = length(p - mouse);",
+      "  float glow = smoothstep(0.4, 0.0, d);",
+      "  return vec4(vec3(glow), 1.0);",
+      "}",
+    ].join("\n"),
+  },
+  {
+    id: "kaleidoscope",
+    label: "カレイドスコープ",
+    source: [
+      "vec4 render(vec2 uv, vec2 p) {",
+      "  float segments = 8.0;",
+      "  float a = atan(p.y, p.x);",
+      "  float r = length(p);",
+      "  a = abs(mod(a, 6.28318 / segments) - 3.14159 / segments);",
+      "  vec2 q = vec2(cos(a), sin(a)) * r;",
+      "  float v = sin(q.x * 10.0 - time) * 0.5 + 0.5;",
+      "  return vec4(vec3(v), 1.0);",
+      "}",
+    ].join("\n"),
+  },
+  {
+    id: "domain-warp",
+    label: "ドメインワーピング",
+    source: [
+      "float hash(vec2 p) {",
+      "  return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);",
+      "}",
+      "",
+      "float noise(vec2 p) {",
+      "  vec2 i = floor(p);",
+      "  vec2 f = fract(p);",
+      "  vec2 u = f * f * (3.0 - 2.0 * f);",
+      "  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),",
+      "             mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);",
+      "}",
+      "",
+      "vec4 render(vec2 uv, vec2 p) {",
+      "  vec2 warp = vec2(noise(p + time * 0.1), noise(p + vec2(5.2, 1.3) - time * 0.1));",
+      "  float n = noise(p * 2.0 + warp * 2.0);",
+      "  return vec4(vec3(n), 1.0);",
+      "}",
+    ].join("\n"),
+  },
+  {
+    id: "sphere",
+    label: "疑似3D球体",
+    source: [
+      "float sdSphere(vec3 p, float r) {",
+      "  return length(p) - r;",
+      "}",
+      "",
+      "vec4 render(vec2 uv, vec2 p) {",
+      "  vec3 ro = vec3(0.0, 0.0, -3.0);",
+      "  vec3 rd = normalize(vec3(p, 1.5));",
+      "  float t = 0.0;",
+      "  for (int i = 0; i < 32; i++) {",
+      "    float d = sdSphere(ro + rd * t, 1.0);",
+      "    if (d < 0.001) break;",
+      "    t += d;",
+      "    if (t > 10.0) break;",
+      "  }",
+      "  if (t > 10.0) return vec4(0.02, 0.02, 0.05, 1.0);",
+      "  vec3 normal = normalize(ro + rd * t);",
+      "  vec3 lightDir = normalize(vec3(cos(time), 1.0, -sin(time)));",
+      "  float diff = max(dot(normal, lightDir), 0.0);",
+      "  return vec4(vec3(diff), 1.0);",
+      "}",
+    ].join("\n"),
+  },
+  {
+    id: "fractal",
+    label: "フラクタル",
+    source: [
+      "vec4 render(vec2 uv, vec2 p) {",
+      "  vec2 c = p * 1.2 + vec2(-0.5, 0.0);",
+      "  vec2 z = vec2(0.0);",
+      "  float iter = 0.0;",
+      "  for (int i = 0; i < 64; i++) {",
+      "    z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;",
+      "    if (dot(z, z) > 4.0) break;",
+      "    iter += 1.0;",
+      "  }",
+      "  float v = iter / 64.0;",
+      "  return vec4(vec3(v), 1.0);",
+      "}",
+    ].join("\n"),
+  },
+];
 
 const SIZE_BUDGET_BYTES = 4096; // 4 KB
 const FRAME_TIME_BUDGET_MS = 8;
@@ -63,8 +182,12 @@ export default function EditPage() {
   }, []);
 
   function handleReset() {
-    setCode(STARTER_SOURCE);
-    setCompiledSource(STARTER_SOURCE);
+    applySource(STARTER_SOURCE);
+  }
+
+  function applySource(source: string) {
+    setCode(source);
+    setCompiledSource(source);
     setHasRendered(false);
     setResetToken((t) => t + 1);
   }
@@ -119,6 +242,16 @@ export default function EditPage() {
               <p className="truncate text-sm font-medium text-text-primary">Untitled</p>
               <p className="text-xs tracking-wide text-text-secondary">下書き · 未保存</p>
             </div>
+            <Menu>
+              <MenuTrigger render={<Button variant="secondary" size="sm" />}>プリセット</MenuTrigger>
+              <MenuContent align="end">
+                {PRESETS.map((preset) => (
+                  <MenuItem key={preset.id} onClick={() => applySource(preset.source)}>
+                    {preset.label}
+                  </MenuItem>
+                ))}
+              </MenuContent>
+            </Menu>
             {/* フォーマッタは未実装。将来ここにGLSL整形を入れる想定の置き場所 */}
             <Button variant="secondary" size="sm" disabled>
               フォーマット
