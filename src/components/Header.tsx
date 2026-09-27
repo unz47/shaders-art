@@ -10,12 +10,12 @@ import searchIcon from "@/icons/search.svg";
 
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
 // 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/Submit/テーマ切り替え
-// Rooms は行き先が未設計のため削除。Edit(/edit のシェーダーエディタ)は
-// まだページが無いので、クリックしても迷子にならないよう見た目だけ残す。
+// Rooms は行き先が未設計のため削除。
 export function Header() {
   // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/");
+  const editActive = pathname.startsWith("/edit");
 
   // 初期値は layout.tsx の先読みスクリプトが既に適用した data-theme から読む
   // (SSR時は document が無いので light 決め打ち。ずれても下の suppressHydrationWarning で吸収)
@@ -50,7 +50,14 @@ export function Header() {
           >
             Gallery
           </Link>
-          <span className="border-b-2 border-transparent pb-1 text-text-secondary">Edit</span>
+          <Link
+            href="/edit"
+            className={`border-b-2 pb-1 text-text-primary transition-colors hover:text-accent-default ${
+              editActive ? "border-accent-default" : "border-transparent"
+            }`}
+          >
+            Edit
+          </Link>
         </nav>
       </div>
 
