@@ -16,6 +16,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1141.0",
+    "@aws-sdk/lib-dynamodb": "^3.1141.0",
     "@frost-ui/react": "^0.1.0",
     "@frost-ui/tokens": "^0.1.0",
     "next": "^16.2.9",
