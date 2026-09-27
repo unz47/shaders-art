@@ -17,6 +17,9 @@ varying vec2 vUv;
 uniform float time;
 uniform float attention;
 uniform vec2 resolution;
+// p と同じ座標系(中心原点・アスペクト補正済み)でのカーソル位置。
+// マウスが乗っていない/追跡してない場合は (0, 0) のまま
+uniform vec2 mouse;
 
 ${source}
 

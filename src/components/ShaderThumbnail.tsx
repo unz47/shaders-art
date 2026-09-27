@@ -35,6 +35,7 @@ export function ShaderThumbnail({ source, thumbnail, alt }: { source: string; th
       time: { value: 0 },
       attention: { value: 0 },
       resolution: { value: new THREE.Vector2(1, 1) },
+      mouse: { value: new THREE.Vector2(0, 0) },
     };
     const material = new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,

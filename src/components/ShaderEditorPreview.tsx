@@ -52,6 +52,10 @@ export function ShaderEditorPreview({
     elapsedRef.current = 0;
   }, [resetToken]);
 
+  // p と同じ座標系(中心原点・アスペクト補正済み)でのカーソル位置。
+  // sourceが変わって描画をやり直しても、カーソル位置はリセットしない
+  const mouseRef = useRef({ x: 0, y: 0 });
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -78,6 +82,7 @@ export function ShaderEditorPreview({
       time: { value: 0 },
       attention: { value: attentionRef.current },
       resolution: { value: new THREE.Vector2(1, 1) },
+      mouse: { value: new THREE.Vector2(mouseRef.current.x, mouseRef.current.y) },
     };
     const material = new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
@@ -98,6 +103,21 @@ export function ShaderEditorPreview({
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(container);
+
+    function handlePointerMove(e: PointerEvent) {
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const u = (e.clientX - rect.left) / rect.width;
+      // DOMのY(下向き)とGLSLのuv.y(上向き、Three.jsのPlaneGeometry既定)は逆なので反転する
+      const v = 1 - (e.clientY - rect.top) / rect.height;
+      let mx = (u - 0.5) * 2;
+      const my = (v - 0.5) * 2;
+      mx *= rect.width / rect.height;
+      mouseRef.current.x = mx;
+      mouseRef.current.y = my;
+    }
+    container.addEventListener("pointermove", handlePointerMove);
 
     let raf = 0;
     let last = performance.now();
@@ -124,6 +144,7 @@ export function ShaderEditorPreview({
         }
         uniforms.time.value = elapsedRef.current;
         uniforms.attention.value = attentionRef.current;
+        uniforms.mouse.value.set(mouseRef.current.x, mouseRef.current.y);
 
         fpsAcc += dt;
         fpsFrames++;
@@ -155,6 +176,7 @@ export function ShaderEditorPreview({
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      container.removeEventListener("pointermove", handlePointerMove);
       material.dispose();
       quad.geometry.dispose();
       renderer.dispose();
