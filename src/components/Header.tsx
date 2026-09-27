@@ -11,7 +11,7 @@ import searchIcon from "@/icons/search.svg";
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
 // 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/Submit/テーマ切り替え
 // Rooms は行き先が未設計のため削除。
-export function Header() {
+export function Header({ showSearch = true, showSubmit = true }: { showSearch?: boolean; showSubmit?: boolean }) {
   // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/");
@@ -62,13 +62,17 @@ export function Header() {
       </div>
 
       <div className="ml-auto flex items-center gap-sp-sm">
-        <div className="flex h-8 w-60 items-center gap-sp-xs rounded-control border border-border-subtle bg-bg-raised pl-sp-sm pr-1.5">
-          <Image src={searchIcon} alt="" width={16} height={16} />
-          <span className="text-sm text-text-muted">Search works…</span>
-        </div>
-        <Button variant="primary" size="sm">
-          Submit
-        </Button>
+        {showSearch && (
+          <div className="flex h-8 w-60 items-center gap-sp-xs rounded-control border border-border-subtle bg-bg-raised pl-sp-sm pr-1.5">
+            <Image src={searchIcon} alt="" width={16} height={16} />
+            <span className="text-sm text-text-muted">Search works…</span>
+          </div>
+        )}
+        {showSubmit && (
+          <Button variant="primary" size="sm">
+            Submit
+          </Button>
+        )}
         <button
           onClick={toggleTheme}
           aria-pressed={theme === "dark"}
