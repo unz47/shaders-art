@@ -10,9 +10,9 @@
     "dev": "next dev",
     "build": "next build && node scripts/flatten-standalone.mjs",
     "start": "node .next/standalone/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
-    "verify": "tsc --noEmit && eslint .",
+    "verify": "next typegen && tsc --noEmit && eslint .",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
