@@ -1,6 +1,5 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CfnOutput } from "aws-cdk-lib";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
@@ -27,8 +26,17 @@ export class NextjsSite extends Construct {
     this.nextjs = new Nextjs(this, "Nextjs", {
       // infra/lib -> infra -> リポジトリルート(Next.jsアプリ本体)
       nextjsPath: path.resolve(dirname, "../.."),
+      // コンストラクトの既定値と同じだが、意図を明示するために書いておく。
+      // OpenNext v3系がNext.js 16に対応している。ルートのpackage.jsonには
+      // OpenNextを入れない(ここで使うのはnpx経由のこのバージョンだけ)。
+      buildCommand: "npx --yes @opennextjs/aws@^3 build",
       environment: {
         TABLE_NAME: table.tableName,
+        // 作品APIはこのLambda自身のRoute Handler(/api)なので相対パスで叩く。
+        // .env には旧API Gateway時代の NEXT_PUBLIC_API_BASE が残っている可能性があり、
+        // ここで渡した値はビルド時に .env より優先されるので、クライアントバンドルに
+        // 旧ホストが焼き込まれるのを防ぐ。
+        NEXT_PUBLIC_API_BASE: "/api",
       },
       overrides: {
         nextjsDistribution: {
@@ -39,9 +47,8 @@ export class NextjsSite extends Construct {
       },
     });
 
-    // SSR Lambda(Route Handler)からDynamoDBを読み書きできるようにする
+    // SSR Lambda(Route Handler)からDynamoDBを読めるようにする。
+    // 投稿API(POST)を足すときに grantReadWriteData に広げる。
     table.grantReadData(this.nextjs.serverFunction.lambdaFunction);
-
-    new CfnOutput(this, "SiteUrl", { value: this.nextjs.url });
   }
 }

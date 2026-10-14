@@ -37,6 +37,13 @@ jobs:
           cache: pnpm
           cache-dependency-path: shaders-art/pnpm-lock.yaml
 
+      # link: 先の @frost-ui/react は自分の node_modules から react の型を解決する。
+      # design-system 側を install しないと ComponentPropsWithRef が解決できず、
+      # Button などの props から children が消えて型エラーになる。
+      - name: design-system の依存を入れる
+        run: pnpm install --frozen-lockfile
+        working-directory: design-system
+
       - run: pnpm install --frozen-lockfile
 
       - name: 型 / lint
@@ -45,5 +52,5 @@ jobs:
       - name: テスト
         run: pnpm test
 
-      - name: 静的ビルド
+      - name: ビルド
         run: pnpm build
