@@ -4,18 +4,22 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@frost-ui/react/atoms/button";
+import { buttonVariants } from "@frost-ui/react/atoms/button";
+import { loginHref, useSession } from "@/lib/useSession";
 import moonIcon from "@/icons/moon.svg";
 import searchIcon from "@/icons/search.svg";
 
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
 // 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/Submit/テーマ切り替え
 // Rooms は行き先が未設計のため削除。
+// 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
+// Submit(/edit へ)と Sign out を出す。閲覧はログイン不要。
 export function Header({ showSearch = true, showSubmit = true }: { showSearch?: boolean; showSubmit?: boolean }) {
   // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/");
   const editActive = pathname.startsWith("/edit");
+  const session = useSession();
 
   // 初期値は layout.tsx の先読みスクリプトが既に適用した data-theme から読む
   // (SSR時は document が無いので light 決め打ち。ずれても下の suppressHydrationWarning で吸収)
@@ -68,10 +72,26 @@ export function Header({ showSearch = true, showSubmit = true }: { showSearch?: 
             <span className="text-sm text-text-muted">Search works…</span>
           </div>
         )}
-        {showSubmit && (
-          <Button variant="primary" size="sm">
-            Submit
-          </Button>
+        {session.status === "ready" && session.user && (
+          <>
+            {showSubmit && (
+              <Link href="/edit" className={buttonVariants({ variant: "primary", size: "sm" })}>
+                Submit
+              </Link>
+            )}
+            {/* ログアウトは POST(GET だとプリフェッチなどで勝手に発火しうる) */}
+            <form action="/api/auth/logout" method="post">
+              <button type="submit" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+                Sign out
+              </button>
+            </form>
+          </>
+        )}
+        {session.status === "ready" && session.configured && !session.user && (
+          // Route Handler へのフルページ遷移なので <Link> ではなく <a>
+          <a href={loginHref(pathname)} className={buttonVariants({ variant: "primary", size: "sm" })}>
+            Sign in
+          </a>
         )}
         <button
           onClick={toggleTheme}

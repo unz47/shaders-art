@@ -1,13 +1,7 @@
-import { works } from "@/mocks/works/data";
 import { WorkDetail } from "./WorkDetail";
 
-// 静的書き出し(output: "export")では動的セグメントを全列挙する必要がある。
-// 一覧はビルド時にこのモック配列から作るが、中身の取得は WorkDetail が
-// 実行時にモック API(fetch)から行う。本物のバックエンドになっても
-// この一覧の取り方だけ差し替えればいい。
-export function generateStaticParams() {
-  return works.map((w) => ({ slug: w.slug }));
-}
+// SSR なので slug は全部リクエスト時に解決する(投稿された作品もそのまま開ける)。
+// 中身の取得は WorkDetail が実行時に /api/works/:slug から行う。
 
 interface Params {
   params: Promise<{ slug: string }>;

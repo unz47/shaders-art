@@ -3,12 +3,17 @@ import { fileURLToPath } from "node:url";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
+import type { Auth } from "./auth.ts";
 
 export interface NextjsSiteProps {
   /** 作品データを読み書きするDynamoDBテーブル。Route Handler(SSR Lambda)から直接アクセスする */
   table: Table;
   /** WafStack(us-east-1)で作った Web ACL の ARN。クロスリージョンで受け取る */
   webAclArn: string;
+  /** ログイン(Cognito)。Route Handler がトークン交換と検証に使う */
+  auth: Auth;
+  /** 本番サイトのオリジン。決まっていれば OAuth の redirect_uri に使う(Auth の siteUrl と同じ値) */
+  siteUrl?: string;
 }
 
 // SSR(OpenNext)でNext.jsアプリ全体(ページ+API)をデプロイする。
@@ -20,7 +25,7 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn } = props;
+    const { table, webAclArn, auth, siteUrl } = props;
 
     const dirname = path.dirname(fileURLToPath(import.meta.url));
     this.nextjs = new Nextjs(this, "Nextjs", {
@@ -30,6 +35,9 @@ export class NextjsSite extends Construct {
       // OpenNext v3系がNext.js 16に対応している。ルートのpackage.jsonには
       // OpenNextを入れない(ここで使うのはnpx経由のこのバージョンだけ)。
       buildCommand: "npx --yes @opennextjs/aws@^3 build",
+      // ここに書いた値はビルド時と実行時(Lambda の環境変数)の両方に渡る。
+      // NEXT_PUBLIC_ 以外のトークン値はビルド時には未解決の文字列になるので、
+      // サーバー側のコードはモジュール読み込み時ではなくリクエスト時に読むこと。
       environment: {
         TABLE_NAME: table.tableName,
         // 作品APIはこのLambda自身のRoute Handler(/api)なので相対パスで叩く。
@@ -37,6 +45,10 @@ export class NextjsSite extends Construct {
         // ここで渡した値はビルド時に .env より優先されるので、クライアントバンドルに
         // 旧ホストが焼き込まれるのを防ぐ。
         NEXT_PUBLIC_API_BASE: "/api",
+        COGNITO_USER_POOL_ID: auth.userPool.userPoolId,
+        COGNITO_CLIENT_ID: auth.client.userPoolClientId,
+        COGNITO_DOMAIN: auth.domainUrl,
+        ...(siteUrl ? { SITE_URL: siteUrl } : {}),
       },
       overrides: {
         nextjsDistribution: {
@@ -47,8 +59,10 @@ export class NextjsSite extends Construct {
       },
     });
 
-    // SSR Lambda(Route Handler)からDynamoDBを読めるようにする。
-    // 投稿API(POST)を足すときに grantReadWriteData に広げる。
-    table.grantReadData(this.nextjs.serverFunction.lambdaFunction);
+    // SSR Lambda(Route Handler)から作品を読む + 投稿(PutItem)だけ書ける。
+    // 更新・削除はまだ API が無いので権限も渡さない。
+    const fn = this.nextjs.serverFunction.lambdaFunction;
+    table.grantReadData(fn);
+    table.grant(fn, "dynamodb:PutItem");
   }
 }
