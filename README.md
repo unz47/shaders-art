@@ -19,6 +19,18 @@ pnpm dev
 既定では `/api` を叩く(`next dev` でも Route Handler が動くが、DynamoDB へのアクセス権と `TABLE_NAME` が要る)。
 バックエンド無しで UI だけ触りたいときは `NEXT_PUBLIC_API_MOCK=1 pnpm dev` で MSW のモックに切り替わる。
 
+ローカルでログインと投稿まで試すときは、`.env.local` に次を入れる(値は `cdk deploy` の出力)。
+Cognito 側には `http://localhost:3000` がコールバック先として登録済み。
+
+```sh
+TABLE_NAME=...            # ShadersArtStack.TableName
+COGNITO_USER_POOL_ID=...  # ShadersArtStack.UserPoolId
+COGNITO_CLIENT_ID=...     # ShadersArtStack.UserPoolClientId
+COGNITO_DOMAIN=...        # ShadersArtStack.CognitoDomain
+```
+
+Cognito の設定が無いときは Sign in ボタンが出ず、投稿はできない(閲覧はできる)。
+
 ## デプロイ
 
 ```sh
@@ -29,3 +41,16 @@ pnpm cdk deploy --all
 
 `cdk deploy` の中で OpenNext のビルド(`next build` → Lambda 用バンドル)まで走る。
 初回は `pnpm seed`(`TABLE_NAME` を出力から渡す)で仮データを入れる。
+
+### 本番でログインを有効にする(初回だけ 2 段階)
+
+Cognito のコールバック URL には本番のオリジンが要るが、CloudFront のドメインはデプロイするまで
+決まらない(コンストラクト間で直接参照すると循環参照になる)。なので:
+
+1. 一度 `cdk deploy --all` する。出力の `ShadersArtStack.SiteUrl` が本番のオリジン
+2. `infra/cdk.json` の `context.siteUrl` にその値を書く(`https://dxxxx.cloudfront.net`、末尾スラッシュ無し)
+3. もう一度 `cdk deploy --all` する
+
+CloudFront のドメインは作り直さない限り変わらない。独自ドメインを当てたら `siteUrl` をそれに差し替える。
+
+Cognito の確認メールは既定の送信元(1 日 50 通まで)で送っている。利用者が増えたら SES に切り替える。

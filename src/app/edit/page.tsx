@@ -304,7 +304,7 @@ export default function EditPage() {
       const result = await submitWork({ ...form, source: code });
       if (result.ok) {
         writeDraft(null);
-        router.push(`/s/${result.slug}/`);
+        router.push(`/s/${result.slug}`);
         return;
       }
       // セッションが切れていたら、下書きを残したままログインし直してもらう
