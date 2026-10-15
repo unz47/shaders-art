@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
+import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
 import type { Auth } from "./auth.ts";
@@ -54,6 +55,15 @@ export class NextjsSite extends Construct {
         nextjsDistribution: {
           distributionProps: {
             webAclId: webAclArn,
+          },
+        },
+        nextjs: {
+          // Function URL を IAM 認証にして、CloudFront(+ WAF)を通らない直接アクセスを拒否する。
+          // 既定の NONE だと URL を知っていれば誰でも Lambda を直接叩けて WAF を素通りできる。
+          // CloudFront 側では Lambda@Edge(us-east-1)が本文込みで SigV4 署名するので、
+          // POST(投稿)もそのまま通る。本文は 1 MB まで(投稿は数 KB なので足りる)。
+          nextjsDistributionProps: {
+            functionUrlAuthType: FunctionUrlAuthType.AWS_IAM,
           },
         },
       },
