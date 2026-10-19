@@ -6,6 +6,7 @@ GLSL を書いて動かせる実行環境と、作品を展示する「博物館
 - `/edit` で書いてライブプレビューし、投稿前チェック(サイズ・フレーム時間・ループ上限)を通す
 - フロントは Next.js(App Router)。作品 API は同じアプリの Route Handler(`/api/works`)で、DynamoDB を読む
 - 本番は AWS。CloudFront(+WAF) → Lambda(OpenNext で SSR)→ DynamoDB。IaC は `infra/`(CDK)
+  - Lambda の Function URL は IAM 認証。CloudFront の Lambda@Edge が署名して呼ぶので、CloudFront(WAF)を通らない直接アクセスはできない
 
 ## 開発
 
