@@ -9,10 +9,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/flatten-standalone.mjs",
-    "start": "npx serve out",
-    "typecheck": "tsc --noEmit",
+    "start": "node .next/standalone/server.js",
+    "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
-    "verify": "tsc --noEmit && eslint .",
+    "verify": "next typegen && tsc --noEmit && eslint .",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
@@ -26,7 +26,6 @@
     "three": "^0.183.0"
   },
   "devDependencies": {
-    "@opennextjs/aws": "^4.1.5",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.4",
