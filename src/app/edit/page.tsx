@@ -22,6 +22,7 @@ import {
   LICENSES,
   SIZE_BUDGET_BYTES,
   TITLE_MAX,
+  type WorkVisibility,
 } from "@/lib/submission";
 import { loginHref, useSession } from "@/lib/useSession";
 import { submitWork } from "@/lib/works";
@@ -178,8 +179,22 @@ function writeDraft(source: string | null) {
   }
 }
 
-type SubmitForm = { title: string; author: string; license: string; tags: string; description: string };
-const EMPTY_FORM: SubmitForm = { title: "", author: "", license: LICENSES[0].id, tags: "", description: "" };
+type SubmitForm = {
+  title: string;
+  author: string;
+  license: string;
+  visibility: WorkVisibility;
+  tags: string;
+  description: string;
+};
+const EMPTY_FORM: SubmitForm = {
+  title: "",
+  author: "",
+  license: LICENSES[0].id,
+  visibility: "public",
+  tags: "",
+  description: "",
+};
 
 export default function EditPage() {
   const [code, setCode] = useState(STARTER_SOURCE);
@@ -422,9 +437,11 @@ export default function EditPage() {
         }}
       >
         <DialogContent className="w-full max-w-md">
-          <DialogTitle>作品を公開する</DialogTitle>
+          <DialogTitle>作品を登録する</DialogTitle>
           <DialogDescription>
-            公開するとすぐに作品ページができます。Gallery への収蔵は運営が後から選びます。
+            {form.visibility === "public"
+              ? "作品ページは誰でも閲覧でき、Gallery に表示されます。"
+              : "作品ページは投稿者本人だけが閲覧できます。Gallery にも表示されません。"}
           </DialogDescription>
           <form onSubmit={handlePublish} className="mt-4 flex flex-col gap-3">
             <Field label="タイトル" htmlFor="submit-title">
@@ -464,6 +481,37 @@ export default function EditPage() {
                 </SelectContent>
               </Select>
             </Field>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 text-sm font-medium text-text-primary">公開範囲</legend>
+              <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
+                <input
+                  className="mt-1 accent-accent-default"
+                  type="radio"
+                  name="visibility"
+                  value="public"
+                  checked={form.visibility === "public"}
+                  onChange={() => updateForm("visibility", "public")}
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm text-text-primary">公開</span>
+                  <span className="text-xs text-text-muted">作品ページが Gallery に表示され、誰でも閲覧できます</span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
+                <input
+                  className="mt-1 accent-accent-default"
+                  type="radio"
+                  name="visibility"
+                  value="private"
+                  checked={form.visibility === "private"}
+                  onChange={() => updateForm("visibility", "private")}
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm text-text-primary">非公開</span>
+                  <span className="text-xs text-text-muted">投稿者本人だけが閲覧できます</span>
+                </span>
+              </label>
+            </fieldset>
             <Field label="タグ(カンマ区切り・任意)" htmlFor="submit-tags">
               <Input
                 id="submit-tags"
@@ -493,7 +541,7 @@ export default function EditPage() {
                 キャンセル
               </DialogClose>
               <Button type="submit" variant="primary" size="sm" disabled={submitting}>
-                {submitting ? "公開中…" : "公開する"}
+                {submitting ? "登録中…" : form.visibility === "public" ? "公開する" : "非公開で登録"}
               </Button>
             </div>
           </form>

@@ -11,6 +11,7 @@ export const AUTHOR_MAX = 40;
 export const DESCRIPTION_MAX = 280;
 export const TAGS_MAX = 5;
 const TAG_PATTERN = /^[a-z0-9][a-z0-9-]{0,23}$/;
+export type WorkVisibility = "public" | "private";
 
 export const LICENSES = [
   { id: "CC0-1.0", label: "CC0 1.0(パブリックドメイン)" },
@@ -60,6 +61,8 @@ export interface SubmissionInput {
   title: string;
   source: string;
   license: string;
+  /** 未指定は既存の挙動と同じ public */
+  visibility?: WorkVisibility;
   /** 表示名(自己申告)。空なら Anonymous */
   author?: string;
   description?: string;
@@ -72,6 +75,7 @@ export interface Submission {
   title: string;
   source: string;
   license: LicenseId;
+  visibility: WorkVisibility;
   author: string;
   description: string;
   tags: string[];
@@ -106,6 +110,12 @@ export function validateSubmission(input: unknown): ValidationResult {
   const license = LICENSES.find((l) => l.id === raw.license)?.id;
   if (!license) errors.push("ライセンスを選んでください");
 
+  const visibilityInput = raw.visibility;
+  const visibility: WorkVisibility = visibilityInput === "private" ? "private" : "public";
+  if (visibilityInput !== undefined && visibilityInput !== "public" && visibilityInput !== "private") {
+    errors.push("公開範囲を選んでください");
+  }
+
   const authorRaw = typeof raw.author === "string" ? raw.author.trim() : "";
   if (authorRaw.length > AUTHOR_MAX) errors.push(`名前は ${AUTHOR_MAX} 文字以内にしてください`);
 
@@ -120,7 +130,7 @@ export function validateSubmission(input: unknown): ValidationResult {
   if (errors.length > 0 || !license) return { ok: false, errors };
   return {
     ok: true,
-    value: { title, source, license, author: authorRaw || "Anonymous", description, tags, bytes },
+    value: { title, source, license, visibility, author: authorRaw || "Anonymous", description, tags, bytes },
   };
 }
 

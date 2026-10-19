@@ -13,6 +13,7 @@ describe("validateSubmission", () => {
         title: "Plasma",
         source: SOURCE,
         license: "CC0-1.0",
+        visibility: "public",
         author: "Anonymous",
         description: "古典",
         tags: ["sine", "classic"],

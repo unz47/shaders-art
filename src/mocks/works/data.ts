@@ -5,6 +5,8 @@
 export interface MockWork {
   slug: string;
   title: string;
+  /** 既存の収蔵作品は visibility 未設定なので公開扱い */
+  visibility?: "public" | "private";
   author: string;
   bytes: number;
   license: string;

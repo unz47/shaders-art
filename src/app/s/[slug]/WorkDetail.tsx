@@ -63,6 +63,7 @@ export function WorkDetail({ slug }: { slug: string }) {
   // 投稿 API は ISO の日時、初期データは日付だけで入っているので、日付部分だけ見せる
   const published = work.createdAt.slice(0, 10);
   const spec: [string, string][] = [
+    ["公開設定", work.visibility === "private" ? "非公開" : "公開"],
     ["Size", `${work.bytes} B`],
     ["License", work.license],
     ["Published", published],

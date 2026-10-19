@@ -103,7 +103,16 @@ export function ShaderThumbnail({ source, thumbnail, alt }: { source: string; th
         hoveredRef.current = false;
       }}
     >
-      <Image src={thumbnail} alt={alt} fill className="object-cover" />
+      {thumbnail ? (
+        <Image src={thumbnail} alt={alt} fill className="object-cover" />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 grid place-items-center bg-bg-raised font-mono text-[11px] tracking-wide text-text-muted"
+        >
+          HOVER TO PREVIEW
+        </div>
+      )}
       {active && (
         <div
           ref={containerRef}

@@ -11,20 +11,21 @@ import { slugify, validateSubmission } from "@/lib/submission";
 // POST /api/works(要ログイン)→ 201 { slug }
 // infra/functions/works.ts(API Gateway + Lambda版)から移植し、SSR と同じ Lambda で動かしている。
 
-export async function GET(request: NextRequest) {
-  const tab = request.nextUrl.searchParams.get("tab") ?? "collection";
+export async function GET() {
   // 件数が少ないうちは Scan で十分。増えてきたら GSI を足して Query に切り替える
   const { Items } = await db.send(new ScanCommand({ TableName: tableName() }));
   const works = (Items ?? []) as Work[];
 
-  const filtered = tab === "collection" ? works.filter((w) => w.collected) : works;
-  const items = [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(toPublicWork);
+  // visibility が無い既存作品は公開扱いにして、移行前のデータをそのまま表示する。
+  const publicWorks = works.filter((w) => w.visibility === undefined || w.visibility === "public");
+  // Gallery は公開作品をすべて表示する。収蔵フラグは表示可否に使わない。
+  const items = [...publicWorks].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(toPublicWork);
 
   return NextResponse.json({ items });
 }
 
-// 投稿は即時公開(collected: false)。収蔵は運営が後から行う。
-// 未収蔵作品は ShaderPool に入れない方針なので、Home(Collection)には出ない。
+// 公開作品は詳細 URL と Gallery から閲覧できる。収蔵フラグは運営向けメタデータとして残す。
+// 非公開作品は投稿者の認証済み authorId を照合し、一覧にも含めない。
 export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ message: "forbidden" }, { status: 403 });
   // JSON 以外を受けない = 他サイトのフォームからの単純 POST を通さない
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
             title: submission.title,
             author: submission.author,
             authorId: session.sub,
+            visibility: submission.visibility,
             bytes: submission.bytes,
             license: submission.license,
             // 静止サムネはまだ作っていない(詳細ページはライブ描画なので不要)
