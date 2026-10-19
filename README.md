@@ -20,14 +20,22 @@ pnpm dev
 既定では `/api` を叩く(`next dev` でも Route Handler が動くが、DynamoDB へのアクセス権と `TABLE_NAME` が要る)。
 バックエンド無しで UI だけ触りたいときは `NEXT_PUBLIC_API_MOCK=1 pnpm dev` で MSW のモックに切り替わる。
 
-ローカルでログインと投稿まで試すときは、`.env.local` に次を入れる(値は `cdk deploy` の出力)。
-Cognito 側には `http://localhost:3000` がコールバック先として登録済み。
+ローカルで実際のログインと投稿まで試すときは、開発用 Cognito を一度作成する。
+この独立スタックは localhost 専用で、本番スタックを変更しない。
+
+```sh
+cd infra
+pnpm cdk --app "node bin/dev-auth.ts" deploy ShadersArtDevAuthStack
+```
+
+出力された `UserPoolId`、`UserPoolClientId`、`CognitoDomain` をプロジェクト直下の `.env.local` に設定する。
+Cognito 側には `http://localhost:3000` がコールバック先として登録済み。設定後は `pnpm dev` を再起動する。
 
 ```sh
 TABLE_NAME=...            # ShadersArtStack.TableName
-COGNITO_USER_POOL_ID=...  # ShadersArtStack.UserPoolId
-COGNITO_CLIENT_ID=...     # ShadersArtStack.UserPoolClientId
-COGNITO_DOMAIN=...        # ShadersArtStack.CognitoDomain
+COGNITO_USER_POOL_ID=...  # ShadersArtDevAuthStack.UserPoolId
+COGNITO_CLIENT_ID=...     # ShadersArtDevAuthStack.UserPoolClientId
+COGNITO_DOMAIN=...        # ShadersArtDevAuthStack.CognitoDomain
 ```
 
 Cognito の設定が無いときは Sign in ボタンが出ず、投稿はできない(閲覧はできる)。

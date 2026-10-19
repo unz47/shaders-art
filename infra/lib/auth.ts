@@ -10,6 +10,8 @@ import {
 import { Construct } from "constructs";
 
 export interface AuthProps {
+  /** Hosted UI のドメイン接頭辞。開発用スタックでは本番と分ける */
+  domainPrefix?: string;
   /**
    * 本番サイトのオリジン(例: https://dxxxx.cloudfront.net)。末尾スラッシュ無し。
    * Cognito のコールバック URL に登録する。
@@ -50,7 +52,7 @@ export class Auth extends Construct {
     });
 
     const domain = this.userPool.addDomain("Domain", {
-      cognitoDomain: { domainPrefix: `shaders-art-${Stack.of(this).account}` },
+      cognitoDomain: { domainPrefix: props.domainPrefix ?? `shaders-art-${Stack.of(this).account}` },
     });
     this.domainUrl = domain.baseUrl();
 
