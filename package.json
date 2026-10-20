@@ -16,6 +16,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.35.0",
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1152.0",
     "@aws-sdk/client-dynamodb": "^3.1141.0",
     "@aws-sdk/lib-dynamodb": "^3.1141.0",
     "@frost-ui/react": "^0.1.0",
