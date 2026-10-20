@@ -1,6 +1,8 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Duration, Stack } from "aws-cdk-lib";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
@@ -16,6 +18,12 @@ export interface NextjsSiteProps {
   /** 本番サイトのオリジン。決まっていれば OAuth の redirect_uri に使う(Auth の siteUrl と同じ値) */
   siteUrl?: string;
 }
+
+// AI と作る で使う Bedrock のモデル。リージョンは Lambda と同じ東京。
+// このアカウントでは Bedrock の Claude が使えない制限があるので(解除は AWS サポートに依頼する)、
+// いまはその場で使えて、コードに強い Qwen3 Coder にしている。Claude に戻すときは anthropic.* の ID にする
+// (東京のマントルにある Claude は Opus 4.8 / 4.7 / Haiku 4.5 まで。呼び方の違いは src/lib/server/ai.ts)。
+const AI_MODEL = "qwen.qwen3-coder-480b-a35b-v1:0";
 
 // SSR(OpenNext)でNext.jsアプリ全体(ページ+API)をデプロイする。
 // cdk-nextjs-standaloneのNextjsコンストラクトが、S3(静的アセット)+
@@ -36,6 +44,9 @@ export class NextjsSite extends Construct {
       // OpenNext v3系がNext.js 16に対応している。ルートのpackage.jsonには
       // OpenNextを入れない(ここで使うのはnpx経由のこのバージョンだけ)。
       buildCommand: "npx --yes @opennextjs/aws@^3 build",
+      // AI と作る(POST /api/ai/edit)の返答を少しずつ返すため、Function URL の応答をストリーミングにする。
+      // OpenNext 側もストリーミング用のラッパーにする必要がある(リポジトリ直下の open-next.config.ts)。
+      streaming: true,
       // ここに書いた値はビルド時と実行時(Lambda の環境変数)の両方に渡る。
       // NEXT_PUBLIC_ 以外のトークン値はビルド時には未解決の文字列になるので、
       // サーバー側のコードはモジュール読み込み時ではなくリクエスト時に読むこと。
@@ -50,8 +61,15 @@ export class NextjsSite extends Construct {
         COGNITO_CLIENT_ID: auth.client.userPoolClientId,
         COGNITO_DOMAIN: auth.domainUrl,
         ...(siteUrl ? { SITE_URL: siteUrl } : {}),
+        AI_MODEL,
       },
       overrides: {
+        nextjsServer: {
+          functionProps: {
+            // 既定の 10 秒では AI の返答(考える時間を含む)が間に合わない
+            timeout: Duration.minutes(2),
+          },
+        },
         nextjsDistribution: {
           distributionProps: {
             webAclId: webAclArn,
@@ -74,5 +92,18 @@ export class NextjsSite extends Construct {
     const fn = this.nextjs.serverFunction.lambdaFunction;
     table.grantReadData(fn);
     table.grant(fn, "dynamodb:PutItem");
+
+    // AI と作る: Claude は Messages API(bedrock-mantle)、それ以外は Converse API(bedrock-runtime)で呼ぶ。
+    if (AI_MODEL.startsWith("anthropic.")) {
+      // CreateInference をどのリソースで絞れるかは AWS のドキュメント間で食い違っているので、アクションだけに絞る
+      fn.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-mantle:CreateInference"], resources: ["*"] }));
+    } else {
+      fn.addToRolePolicy(
+        new PolicyStatement({
+          actions: ["bedrock:InvokeModelWithResponseStream"],
+          resources: [`arn:aws:bedrock:${Stack.of(this).region}::foundation-model/${AI_MODEL}`],
+        }),
+      );
+    }
   }
 }
