@@ -7,8 +7,8 @@ GLSL を書いて動かせる実行環境と、作品を展示する「博物館
 - フロントは Next.js(App Router)。作品 API は同じアプリの Route Handler(`/api/works`)で、DynamoDB を読む
 - 本番は AWS。CloudFront(+WAF) → Lambda(OpenNext で SSR)→ DynamoDB。IaC は `infra/`(CDK)
   - Lambda の Function URL は IAM 認証。CloudFront の Lambda@Edge が署名して呼ぶので、CloudFront(WAF)を通らない直接アクセスはできない
-- 「AI と作る」の API(`POST /api/ai/edit`、要ログイン)。推論は Amazon Bedrock(いまは Qwen3 Coder)で、
-  Lambda の実行ロールで呼ぶので API キーは持たない。返答はストリーミング(SSE)で返す
+- `/edit` の左下に「AI と作る」パネル(要ログイン)。推論は Amazon Bedrock(いまは Qwen3 Coder)で、
+  Lambda の実行ロールで呼ぶので API キーは持たない。返答はストリーミングで返す(`POST /api/ai/edit`、SSE)
 
 ## 開発
 
@@ -58,7 +58,8 @@ Claude のときだけ、安全性の判定で断られたときの切り替え�
 このアカウントでは Bedrock の Claude が「is not available for this account」(403)で使えない(AWS サポートに解除を依頼する)。
 使えるようになっても、東京のマントルにある Claude は Opus 4.8 / 4.7 / Haiku 4.5 まで(Opus 5.5 などは us-east-1 にしか無い)。
 
-`AI_MODEL` が無いときは「AI はまだ設定されていません」と返る。
+`AI_MODEL` が無いときは「AI はまだ設定されていません」と返る。`NEXT_PUBLIC_API_MOCK=1` なら AI もモック
+(依頼文をコメントとして足すだけの提案)になる。
 
 ## デプロイ
 
