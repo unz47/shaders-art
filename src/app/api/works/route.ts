@@ -1,27 +1,21 @@
 import { randomBytes } from "node:crypto";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
-import { PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { NextResponse, type NextRequest } from "next/server";
-import type { Work } from "@/lib/works";
-import { db, tableName, toPublicWork } from "@/lib/server/db";
+import { db, scanAllWorks, tableName, toPublicWork } from "@/lib/server/db";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 import { slugify, validateSubmission } from "@/lib/submission";
+import { parsePage, parseSort, queryWorks } from "@/lib/worksQuery";
 
-// GET  /api/works?tab=collection|new → { items: Work[] }(一覧もホバー再生用に source を含む)
+// GET  /api/works?sort=new|collected|short&page=N → { items, page, pageCount, total, collectedTotal }
+//      公開作品を並べて 24 件ずつ返す(lib/worksQuery)。一覧もホバー再生用に source を含む
 // POST /api/works(要ログイン)→ 201 { slug }
 // infra/functions/works.ts(API Gateway + Lambda版)から移植し、SSR と同じ Lambda で動かしている。
 
-export async function GET() {
-  // 件数が少ないうちは Scan で十分。増えてきたら GSI を足して Query に切り替える
-  const { Items } = await db.send(new ScanCommand({ TableName: tableName() }));
-  const works = (Items ?? []) as Work[];
-
-  // visibility が無い既存作品は公開扱いにして、移行前のデータをそのまま表示する。
-  const publicWorks = works.filter((w) => w.visibility === undefined || w.visibility === "public");
-  // Gallery は公開作品をすべて表示する。収蔵フラグは表示可否に使わない。
-  const items = [...publicWorks].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(toPublicWork);
-
-  return NextResponse.json({ items });
+export async function GET(request: NextRequest) {
+  const params = request.nextUrl.searchParams;
+  const result = queryWorks(await scanAllWorks(), { sort: parseSort(params.get("sort")), page: parsePage(params.get("page")) });
+  return NextResponse.json({ ...result, items: result.items.map(toPublicWork) });
 }
 
 // 公開作品は詳細 URL と Gallery から閲覧できる。収蔵フラグは運営向けメタデータとして残す。

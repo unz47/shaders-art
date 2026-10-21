@@ -1,17 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
-import { Pagination } from "@/components/Pagination";
 import { WorkCard } from "@/components/WorkCard";
 import { getWorks, type WorkSummary } from "@/lib/works";
+import { worksHref } from "@/lib/worksQuery";
 
 export default function Home() {
   const [works, setWorks] = useState<WorkSummary[]>([]);
 
   useEffect(() => {
-    getWorks("collection").then((items) => setWorks(items));
+    getWorks({ sort: "new", page: 1 }).then(({ items }) => setWorks(items));
   }, []);
 
   return (
@@ -22,7 +23,11 @@ export default function Home() {
           <WorkCard key={work.slug} work={work} />
         ))}
       </main>
-      <Pagination itemCount={works.length} />
+      <div className="flex justify-center px-sp-xl pt-12">
+        <Link href={worksHref({ sort: "new" })} className="text-sm text-text-secondary hover:text-text-primary">
+          すべての作品を見る →
+        </Link>
+      </div>
       <Footer />
     </div>
   );

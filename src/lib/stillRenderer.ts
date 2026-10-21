@@ -76,6 +76,9 @@ async function draw(source: string, width: number, height: number): Promise<stri
   };
   scene.add(mesh);
   try {
+    // コンパイルは時間がかかる(重い作品だと数百ミリ秒)。KHR_parallel_shader_compile が使える
+    // ブラウザでは、終わるのを待つ間に画面の処理を止めないよう compileAsync で待ってから描く
+    await renderer.compileAsync(scene, camera);
     renderer.render(scene, camera);
   } finally {
     scene.remove(mesh);
