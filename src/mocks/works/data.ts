@@ -12,6 +12,10 @@ export interface MockWork {
   license: string;
   thumbnail: string;
   collected: boolean;
+  /** 収蔵した日時。無ければ createdAt を収蔵日とみなす(収蔵日を持つ前に収蔵した作品) */
+  collectedAt?: string;
+  /** 収蔵番号(1 から)。保存はせず、API が収蔵日の順に数えて付ける */
+  collectionNo?: number;
   createdAt: string;
   description: string;
   tags: string[];
