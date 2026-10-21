@@ -3,7 +3,7 @@ import { parsePage, parseSort } from "@/lib/worksQuery";
 import { WorksBrowser } from "./WorksBrowser";
 
 // /works … すべての作品。並び替え(?sort=)とページ(?page=)は URL で持つ。
-// Home の「すべて見る」から来る(New → sort=new、Collection → sort=collected)。
+// Home の「すべて見る」から来る(New → sort=new、Popular → sort=popular)。
 // 一覧の取得はブラウザ側(WorksBrowser)。Home と同じく /api/works を使う。
 export const metadata: Metadata = {
   title: "すべての作品 — shaders.art",
