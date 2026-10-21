@@ -38,6 +38,7 @@ import {
   type WorkVisibility,
 } from "@/lib/submission";
 import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
+import { useFullscreen } from "@/lib/useFullscreen";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { loginHref, useSession } from "@/lib/useSession";
 import { submitWork } from "@/lib/works";
@@ -280,6 +281,12 @@ export default function EditPage() {
   // 右側(プレビュー)の幅の割合。境界(SplitHandle)のドラッグで変える
   const [previewRatio, setPreviewRatio] = useState(DEFAULT_PREVIEW_RATIO);
   const columnsRef = useRef<HTMLDivElement>(null);
+  // プレビューの全画面表示
+  const stageRef = useRef<HTMLDivElement>(null);
+  const fullscreen = useFullscreen(stageRef);
+  const [pointerIdle, setPointerIdle] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stageChromeHidden = fullscreen.active && pointerIdle;
 
   // 保存済みの下書きを復元する。サーバーとハイドレーション時は undefined(localStorage が無い)、
   // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
@@ -298,6 +305,25 @@ export default function EditPage() {
     if (savedTitle) setForm((f) => ({ ...f, title: savedTitle }));
     if (savedSplit) setPreviewRatio(savedSplit);
   }
+
+  // マウスが動いたら全画面の終了ボタンとカーソルを出し、2 秒止まったら隠す
+  function showStageChrome() {
+    setPointerIdle(false);
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => setPointerIdle(true), 2000);
+  }
+
+  function toggleFullscreen() {
+    showStageChrome();
+    fullscreen.toggle();
+  }
+
+  useEffect(
+    () => () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    },
+    [],
+  );
 
   function changePreviewRatio(ratio: number) {
     setPreviewRatio(ratio);
@@ -564,7 +590,16 @@ export default function EditPage() {
           className="flex shrink-0 flex-col gap-4 overflow-auto p-4"
           style={{ width: `${previewRatio * 100}%`, minWidth: MIN_PREVIEW_WIDTH_PX }}
         >
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle">
+          {/* 全画面にするのはこの枠。ダブルクリックでも切り替える。全画面の間は、マウスを
+              2 秒動かさないと終了ボタンとカーソルを隠して作品だけを見せる */}
+          <div
+            ref={stageRef}
+            onPointerMove={showStageChrome}
+            onDoubleClick={toggleFullscreen}
+            className={`relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle [&:fullscreen]:rounded-none [&:fullscreen]:border-0 ${
+              stageChromeHidden ? "cursor-none" : ""
+            }`}
+          >
             <ShaderEditorPreview
               source={proposal?.source ?? compiledSource}
               playing={playing}
@@ -572,6 +607,18 @@ export default function EditPage() {
               resetToken={resetToken}
               onStats={handleStats}
             />
+            {fullscreen.active && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={toggleFullscreen}
+                className={`absolute right-4 top-4 z-10 transition-opacity ${
+                  stageChromeHidden ? "pointer-events-none opacity-0" : "opacity-100"
+                }`}
+              >
+                全画面を終了
+              </Button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -581,6 +628,11 @@ export default function EditPage() {
             <Button variant="ghost" size="sm" onClick={() => setResetToken((t) => t + 1)}>
               先頭へ
             </Button>
+            {fullscreen.supported && (
+              <Button variant="ghost" size="sm" title="全画面(プレビューのダブルクリックでも切り替え)" onClick={toggleFullscreen}>
+                全画面
+              </Button>
+            )}
             <div className="flex-1" />
             <Badge>{bytes} bytes</Badge>
             <Badge>{stats.fps} fps</Badge>
