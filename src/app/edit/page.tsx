@@ -27,6 +27,7 @@ import {
   TITLE_MAX,
   type WorkVisibility,
 } from "@/lib/submission";
+import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { loginHref, useSession } from "@/lib/useSession";
 import { submitWork } from "@/lib/works";
@@ -231,6 +232,8 @@ export default function EditPage() {
   const [hasRendered, setHasRendered] = useState(false);
   // AI パネルが出している未適用の提案
   const [proposal, setProposal] = useState<{ turnId: number; source: string } | null>(null);
+  // 取り消し・やり直しの履歴(lib/editHistory.ts)。手での入力は止まったところで記録する
+  const [history, setHistory] = useState(() => createHistory(STARTER_SOURCE));
 
   const session = useSession();
   const router = useRouter();
@@ -252,6 +255,7 @@ export default function EditPage() {
     if (savedDraft !== null && savedDraft !== STARTER_SOURCE) {
       setCode(savedDraft);
       setCompiledSource(savedDraft);
+      setHistory(createHistory(savedDraft));
     }
     if (savedTitle) setForm((f) => ({ ...f, title: savedTitle }));
   }
@@ -260,6 +264,7 @@ export default function EditPage() {
     const timer = setTimeout(() => {
       setCompiledSource(code);
       writeDraft(code);
+      setHistory((h) => commit(h, code));
     }, 400);
     return () => clearTimeout(timer);
   }, [code]);
@@ -274,11 +279,33 @@ export default function EditPage() {
   }
 
   function applySource(source: string) {
+    // 差し替え(プリセット・リセット・AI の提案の適用)は 1 段として記録する。
+    // まだ記録していない手での入力があれば、先にそれを 1 段にしておく
+    setHistory((h) => commit(commit(h, code), source));
     setCode(source);
     setCompiledSource(source);
     setProposal(null);
     setHasRendered(false);
     setResetToken((t) => t + 1);
+  }
+
+  // 入力が止まる前(まだ記録していない分)があれば、それも 1 段として扱う
+  const canUndo = proposal === null && (history.past.length > 0 || code !== history.present);
+  const canRedo = proposal === null && history.future.length > 0 && code === history.present;
+
+  function moveHistory(next: EditHistory) {
+    setHistory(next);
+    setCode(next.present);
+    setCompiledSource(next.present);
+    setHasRendered(false);
+  }
+
+  function handleUndo() {
+    if (canUndo) moveHistory(undo(commit(history, code)));
+  }
+
+  function handleRedo() {
+    if (canRedo) moveHistory(redo(history));
   }
 
   function handlePropose(turnId: number, source: string) {
@@ -415,6 +442,30 @@ export default function EditPage() {
               />
               <p className="text-xs tracking-wide text-text-secondary">下書き · このブラウザに自動保存</p>
             </div>
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-sp-xs"
+                aria-label="元に戻す"
+                title="元に戻す(⌘Z)"
+                disabled={!canUndo}
+                onClick={handleUndo}
+              >
+                <UndoIcon />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-sp-xs"
+                aria-label="やり直す"
+                title="やり直す(⇧⌘Z)"
+                disabled={!canRedo}
+                onClick={handleRedo}
+              >
+                <UndoIcon className="-scale-x-100" />
+              </Button>
+            </div>
             <Menu>
               <MenuTrigger render={<Button variant="secondary" size="sm" />}>プリセット</MenuTrigger>
               <MenuContent align="end">
@@ -439,7 +490,11 @@ export default function EditPage() {
               (未適用)
             </div>
           )}
-          {diff ? <CodeDiff lines={diff} /> : <ShaderCodeEditor value={code} onChange={setCode} />}
+          {diff ? (
+            <CodeDiff lines={diff} />
+          ) : (
+            <ShaderCodeEditor value={code} onChange={setCode} onUndo={handleUndo} onRedo={handleRedo} />
+          )}
           <AiPanel
             baseSource={checkedSource}
             pendingTurnId={proposal?.turnId ?? null}
@@ -638,6 +693,21 @@ export default function EditPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ↶(左右反転すると ↷ になる)。色は文字色に従う
+function UndoIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className={`size-4 ${className ?? ""}`}>
+      <path
+        d="M6 3.5 3 6.5l3 3M3 6.5h6.5a3.5 3.5 0 0 1 0 7H8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
