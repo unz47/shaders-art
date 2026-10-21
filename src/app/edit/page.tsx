@@ -284,9 +284,9 @@ export default function EditPage() {
   // プレビューの全画面表示
   const stageRef = useRef<HTMLDivElement>(null);
   const fullscreen = useFullscreen(stageRef);
-  const [pointerIdle, setPointerIdle] = useState(false);
+  // マウスがプレビューの上で止まっている(または外にある)間は true。全画面ボタンを隠す
+  const [pointerIdle, setPointerIdle] = useState(true);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stageChromeHidden = fullscreen.active && pointerIdle;
 
   // 保存済みの下書きを復元する。サーバーとハイドレーション時は undefined(localStorage が無い)、
   // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
@@ -306,11 +306,16 @@ export default function EditPage() {
     if (savedSplit) setPreviewRatio(savedSplit);
   }
 
-  // マウスが動いたら全画面の終了ボタンとカーソルを出し、2 秒止まったら隠す
+  // マウスがプレビューの上で動いたら全画面ボタン(とカーソル)を出し、2 秒止まったら隠す
   function showStageChrome() {
     setPointerIdle(false);
     if (idleTimer.current) clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(() => setPointerIdle(true), 2000);
+  }
+
+  function hideStageChrome() {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    setPointerIdle(true);
   }
 
   function toggleFullscreen() {
@@ -590,14 +595,16 @@ export default function EditPage() {
           className="flex shrink-0 flex-col gap-4 overflow-auto p-4"
           style={{ width: `${previewRatio * 100}%`, minWidth: MIN_PREVIEW_WIDTH_PX }}
         >
-          {/* 全画面にするのはこの枠。ダブルクリックでも切り替える。全画面の間は、マウスを
-              2 秒動かさないと終了ボタンとカーソルを隠して作品だけを見せる */}
+          {/* 全画面にするのはこの枠。YouTube などと同じく右下のボタン(またはダブルクリック)で
+              切り替える。ボタンはマウスが動いている間だけ出し、2 秒止まったら隠す。
+              全画面の間はカーソルも隠して作品だけを見せる */}
           <div
             ref={stageRef}
             onPointerMove={showStageChrome}
+            onPointerLeave={hideStageChrome}
             onDoubleClick={toggleFullscreen}
             className={`relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle [&:fullscreen]:rounded-none [&:fullscreen]:border-0 ${
-              stageChromeHidden ? "cursor-none" : ""
+              fullscreen.active && pointerIdle ? "cursor-none" : ""
             }`}
           >
             <ShaderEditorPreview
@@ -607,17 +614,20 @@ export default function EditPage() {
               resetToken={resetToken}
               onStats={handleStats}
             />
-            {fullscreen.active && (
-              <Button
-                variant="secondary"
-                size="sm"
+            {fullscreen.supported && (
+              <button
+                type="button"
+                aria-label={fullscreen.active ? "全画面を終了" : "全画面"}
+                title={`${fullscreen.active ? "全画面を終了" : "全画面"}(ダブルクリックでも切り替え)`}
                 onClick={toggleFullscreen}
-                className={`absolute right-4 top-4 z-10 transition-opacity ${
-                  stageChromeHidden ? "pointer-events-none opacity-0" : "opacity-100"
+                onDoubleClick={(e) => e.stopPropagation()}
+                // 作品の上に重ねるので、テーマに関わらず半透明の黒地に白いアイコンにする
+                className={`absolute bottom-3 right-3 z-10 grid size-8 place-items-center rounded-control bg-black/50 text-white transition-opacity hover:bg-black/70 focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white ${
+                  pointerIdle ? "pointer-events-none opacity-0" : "opacity-100"
                 }`}
               >
-                全画面を終了
-              </Button>
+                <FullscreenIcon exit={fullscreen.active} />
+              </button>
             )}
           </div>
 
@@ -628,11 +638,6 @@ export default function EditPage() {
             <Button variant="ghost" size="sm" onClick={() => setResetToken((t) => t + 1)}>
               先頭へ
             </Button>
-            {fullscreen.supported && (
-              <Button variant="ghost" size="sm" title="全画面(プレビューのダブルクリックでも切り替え)" onClick={toggleFullscreen}>
-                全画面
-              </Button>
-            )}
             <div className="flex-1" />
             <Badge>{bytes} bytes</Badge>
             <Badge>{stats.fps} fps</Badge>
@@ -801,6 +806,18 @@ export default function EditPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// 全画面に入る(四隅が外向き)/ 抜ける(四隅が内向き)。色は文字色に従う
+function FullscreenIcon({ exit }: { exit: boolean }) {
+  const d = exit
+    ? "M6 2.5v3.5H2.5M10 2.5v3.5h3.5M6 13.5V10H2.5M10 13.5V10h3.5"
+    : "M2.5 6V2.5H6M13.5 6V2.5H10M2.5 10v3.5H6M13.5 10v3.5H10";
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="size-4">
+      <path d={d} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
