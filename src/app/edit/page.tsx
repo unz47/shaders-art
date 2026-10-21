@@ -425,10 +425,6 @@ export default function EditPage() {
                 ))}
               </MenuContent>
             </Menu>
-            {/* フォーマッタは未実装。将来ここにGLSL整形を入れる想定の置き場所 */}
-            <Button variant="secondary" size="sm" disabled>
-              フォーマット
-            </Button>
             <Button variant="ghost" size="sm" onClick={handleReset}>
               リセット
             </Button>
