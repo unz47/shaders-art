@@ -49,6 +49,7 @@ import {
 import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
 import { renderStillPng } from "@/lib/renderStill";
 import { buildStandaloneHtml, downloadBlob, exportFileName, toShadertoy } from "@/lib/shaderExport";
+import { embedSnippet, stageUrlForSource } from "@/lib/stageUrl";
 import { useFullscreen } from "@/lib/useFullscreen";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { loginHref, useSession } from "@/lib/useSession";
@@ -360,11 +361,29 @@ export default function EditPage() {
     downloadBlob(new Blob([html], { type: "text/html" }), exportFileName(form.title, "", "html"));
   }
 
-  function copyForShadertoy() {
+  function copyText(text: string, title: string, description: string) {
     void navigator.clipboard
-      .writeText(toShadertoy(exportSource, { title: form.title }))
-      .then(() => toast.add({ title: "コピーしました", description: "Shadertoy の Image タブに貼り付けてください。" }))
+      .writeText(text)
+      .then(() => toast.add({ title, description }))
       .catch(() => toast.add({ title: "コピーできませんでした", priority: "high" }));
+  }
+
+  function copyForShadertoy() {
+    copyText(toShadertoy(exportSource, { title: form.title }), "コピーしました", "Shadertoy の Image タブに貼り付けてください。");
+  }
+
+  function copyStageUrl() {
+    if (!stageUrl) return;
+    copyText(
+      stageUrl,
+      "配信背景用の URL をコピーしました",
+      "OBS の「ソース」→「ブラウザ」の URL に貼り付け、幅 1920・高さ 1080 にしてください。壁紙アプリにも使えます。",
+    );
+  }
+
+  function copyEmbed() {
+    if (!stageUrl) return;
+    copyText(embedSnippet(stageUrl, form.title), "埋め込みコードをコピーしました", "ブログやサイトの HTML に貼り付けてください。");
   }
 
   useEffect(
@@ -446,6 +465,18 @@ export default function EditPage() {
   // プレビューに映っているコード(書き出しの対象)。コンパイルできているときだけ書き出せる
   const exportSource = proposal?.source ?? compiledSource;
   const canExport = hasRendered && stats.error === null;
+  // 配信背景・埋め込み用の URL(コードを圧縮して # に入れる)。圧縮は非同期なので、コピーの
+  // クリックの時点で作っていると、ブラウザによってはクリップボードへの書き込みを断られる。先に作っておく
+  const [stageUrl, setStageUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void stageUrlForSource(window.location.origin, exportSource).then((url) => {
+      if (!cancelled) setStageUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [exportSource]);
   const diff = useMemo(() => (proposal ? diffLines(code, proposal.source) : null), [code, proposal]);
   const diffCount = diff ? diffStats(diff) : null;
 
@@ -701,6 +732,16 @@ export default function EditPage() {
                   <MenuGroupLabel>コード</MenuGroupLabel>
                   <MenuItem onClick={exportHtml}>単体で動く HTML ファイル</MenuItem>
                   <MenuItem onClick={copyForShadertoy}>Shadertoy 用にコピー</MenuItem>
+                </MenuGroup>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>配信背景・埋め込み(投稿しなくても使える)</MenuGroupLabel>
+                  <MenuItem disabled={!stageUrl} onClick={copyStageUrl}>
+                    配信背景用の URL をコピー
+                  </MenuItem>
+                  <MenuItem disabled={!stageUrl} onClick={copyEmbed}>
+                    埋め込みコードをコピー
+                  </MenuItem>
                 </MenuGroup>
               </MenuContent>
             </Menu>
