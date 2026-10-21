@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { Badge } from "@frost-ui/react/atoms/badge";
 import { Card } from "@frost-ui/react/molecules/card";
 import { ShaderThumbnail } from "@/components/ShaderThumbnail";
 import type { WorkSummary } from "@/lib/works";
 
 // 仕様: Figma "Home / Desktop 1440" > ShaderCard(node 8:20 ほか)
 // サムネ 16:10 相当 + 2 行のキャプション(タイトル…bytes / 作者・年…ライセンス)
+// 非公開の作品は「自分の作品」(/me)にだけ並ぶので、そこで見分けられるよう印を付ける
 export function WorkCard({ work }: { work: WorkSummary }) {
   const year = work.createdAt.slice(0, 4);
   const license = work.license.replace(/-\d.*$/, ""); // "CC0-1.0" → "CC0"
@@ -18,6 +20,7 @@ export function WorkCard({ work }: { work: WorkSummary }) {
         <div className="flex flex-col gap-1.5 p-sp-md">
           <div className="flex items-baseline gap-sp-sm">
             <h2 className="flex-1 text-sm font-medium text-text-primary">{work.title}</h2>
+            {work.visibility === "private" && <Badge>非公開</Badge>}
             <span className="font-mono text-xs text-text-muted">{work.bytes} B</span>
           </div>
           <div className="flex items-baseline gap-1 text-xs">
