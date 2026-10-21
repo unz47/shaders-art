@@ -13,8 +13,11 @@ const waf = new WafStack(app, "ShadersArtWafStack", {
   crossRegionReferences: true,
 });
 
+// account は Function URL の IAM 認証に要る。署名用の Lambda@Edge が us-east-1 の別スタックに
+// 作られ、そこから SSR Lambda の ARN を参照するので、アカウントが決まっていないと合成できない。
+// CDK_DEFAULT_ACCOUNT は cdk CLI が今の認証情報から入れる。
 new ShadersArtStack(app, "ShadersArtStack", {
-  env: { region: "ap-northeast-1" },
+  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: "ap-northeast-1" },
   crossRegionReferences: true,
   webAclArn: waf.webAcl.attrArn,
 });

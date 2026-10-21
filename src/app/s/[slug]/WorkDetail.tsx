@@ -60,12 +60,15 @@ export function WorkDetail({ slug }: { slug: string }) {
 
   const { work } = state;
 
+  // 投稿 API は ISO の日時、初期データは日付だけで入っているので、日付部分だけ見せる
+  const published = work.createdAt.slice(0, 10);
   const spec: [string, string][] = [
+    ["公開設定", work.visibility === "private" ? "非公開" : "公開"],
     ["Size", `${work.bytes} B`],
     ["License", work.license],
-    ["Published", work.createdAt],
+    ["Published", published],
   ];
-  if (work.collected) spec.push(["Collected", work.createdAt]);
+  if (work.collected) spec.push(["Collected", published]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -77,7 +80,7 @@ export function WorkDetail({ slug }: { slug: string }) {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-text-primary">{work.title}</p>
               <p className="text-xs tracking-wide text-text-secondary">
-                {work.author} · {work.createdAt}
+                {work.author} · {published}
               </p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => copySource(work.source)}>

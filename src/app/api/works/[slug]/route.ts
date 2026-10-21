@@ -1,18 +1,24 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { NextResponse, type NextRequest } from "next/server";
+import { db, tableName, toPublicWork } from "@/lib/server/db";
+import { getSession } from "@/lib/server/session";
 
 // infra/functions/works.ts(API Gateway + Lambda版)から移植。
 // GET /api/works/:slug → Work(source を含む)、無ければ 404
 
-const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const TABLE_NAME = process.env.TABLE_NAME!;
-
 export async function GET(_request: NextRequest, ctx: RouteContext<"/api/works/[slug]">) {
   const { slug } = await ctx.params;
 
-  const { Item } = await client.send(new GetCommand({ TableName: TABLE_NAME, Key: { slug } }));
+  const { Item } = await db.send(new GetCommand({ TableName: tableName(), Key: { slug } }));
   if (!Item) return NextResponse.json({ message: "not found" }, { status: 404 });
 
-  return NextResponse.json(Item);
+  // 古い作品(visibility 未設定)は公開扱い。非公開作品は投稿者以外に存在を知らせない。
+  if (Item.visibility !== undefined && Item.visibility !== "public") {
+    const session = await getSession();
+    if (!session || session.sub !== Item.authorId) {
+      return NextResponse.json({ message: "not found" }, { status: 404 });
+    }
+  }
+
+  return NextResponse.json(toPublicWork(Item));
 }

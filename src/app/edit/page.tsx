@@ -1,18 +1,42 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
+import { Input } from "@frost-ui/react/atoms/input";
+import { Label } from "@frost-ui/react/atoms/label";
+import { Textarea } from "@frost-ui/react/atoms/textarea";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@frost-ui/react/organisms/dialog";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
+import { type AiAccess, AiPanel } from "@/components/AiPanel";
+import { CodeDiff } from "@/components/CodeDiff";
 import { Header } from "@/components/Header";
 import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview, type ShaderEditorStats } from "@/components/ShaderEditorPreview";
+import {
+  AUTHOR_MAX,
+  byteLength,
+  checkLoopsBounded,
+  DESCRIPTION_MAX,
+  FRAME_TIME_BUDGET_MS,
+  LICENSES,
+  SIZE_BUDGET_BYTES,
+  TITLE_MAX,
+  type WorkVisibility,
+} from "@/lib/submission";
+import { diffLines, diffStats } from "@/lib/lineDiff";
+import { loginHref, useSession } from "@/lib/useSession";
+import { submitWork } from "@/lib/works";
 
 // 仕様: Figma "Edit / Desktop 1440"(node 63:421、エラー状態は 65:429)
 // WorkDetail(/s/[slug])と同じ「左にコード・右に描画」の構えだが、こちらは
 // コードが編集可能で、Pre-publish checksを常時計算して表示する。
-// 投稿・審査パイプライン自体はまだ無い(Notionのプロジェクトメモに未着手と
-// 明記されてる)ので、ここのチェックはあくまで下書き段階の目安。
+// 静的なチェック(サイズ・gl_FragCoord・ループ)は投稿時にサーバーでも同じルール
+// (lib/submission.ts)で確かめる。コンパイルとフレーム時間はブラウザでしか測れない。
+// 左下の AI パネルが提案を出している間は、エディタが差分表示に、プレビューとチェックが
+// 提案のコードに切り替わる。適用か却下を選ぶまで投稿はできない。
 
 const STARTER_SOURCE = ["vec4 render(vec2 uv, vec2 p) {", "  return vec4(uv, 0.5, 1.0);", "}"].join("\n");
 
@@ -134,33 +158,48 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
 ];
 
-const SIZE_BUDGET_BYTES = 4096; // 4 KB
-const FRAME_TIME_BUDGET_MS = 8;
-const LOOP_ITERATION_BUDGET = 64;
+// 下書きはこのブラウザに自動保存する。投稿前のログインで Hosted UI に遷移しても
+// 書いたコードが消えないように。
+const DRAFT_KEY = "shaders-art:edit-draft";
 
-// for(...; i < N; ...) のNが数値リテラルのループだけを検出する簡易チェック。
-// 変数を上限に使うループや while は判定できないので、それらは一律「要確認」扱いにする。
-// (投稿審査の閾値自体がNotion側でも「仮置き」とされているので、ここも厳密さより
-// 目安であることを優先している)
-function checkLoopsBounded(source: string): { ok: boolean | null; detail: string } {
-  if (/\bwhile\s*\(/.test(source)) {
-    return { ok: null, detail: "while ループは手動確認が必要" };
+function readDraft(): string | null {
+  try {
+    return localStorage.getItem(DRAFT_KEY);
+  } catch {
+    return null;
   }
-  const bounds: number[] = [];
-  const forLoopPattern = /for\s*\([^;]*;\s*\w+\s*<\s*(\d+)\s*;[^)]*\)/g;
-  let match: RegExpExecArray | null;
-  while ((match = forLoopPattern.exec(source))) {
-    bounds.push(Number(match[1]));
-  }
-  if (bounds.length === 0) {
-    return { ok: true, detail: "ループなし" };
-  }
-  const maxBound = Math.max(...bounds);
-  if (maxBound > LOOP_ITERATION_BUDGET) {
-    return { ok: false, detail: `max ${maxBound} > ${LOOP_ITERATION_BUDGET} iterations` };
-  }
-  return { ok: true, detail: `max ${maxBound} iterations` };
 }
+
+// localStorage の変更は購読しない(読むのは最初の 1 回だけ)
+function subscribeNothing() {
+  return () => {};
+}
+
+function writeDraft(source: string | null) {
+  try {
+    if (source === null) localStorage.removeItem(DRAFT_KEY);
+    else localStorage.setItem(DRAFT_KEY, source);
+  } catch {
+    // プライベートブラウジングなどで使えなくても、編集自体は続けられる
+  }
+}
+
+type SubmitForm = {
+  title: string;
+  author: string;
+  license: string;
+  visibility: WorkVisibility;
+  tags: string;
+  description: string;
+};
+const EMPTY_FORM: SubmitForm = {
+  title: "",
+  author: "",
+  license: LICENSES[0].id,
+  visibility: "public",
+  tags: "",
+  description: "",
+};
 
 export default function EditPage() {
   const [code, setCode] = useState(STARTER_SOURCE);
@@ -170,9 +209,34 @@ export default function EditPage() {
   const [resetToken, setResetToken] = useState(0);
   const [stats, setStats] = useState<ShaderEditorStats>({ fps: 0, elapsed: 0, frameTimeMs: 0, error: null });
   const [hasRendered, setHasRendered] = useState(false);
+  // AI パネルが出している未適用の提案
+  const [proposal, setProposal] = useState<{ turnId: number; source: string } | null>(null);
+
+  const session = useSession();
+  const router = useRouter();
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [form, setForm] = useState<SubmitForm>(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitErrors, setSubmitErrors] = useState<string[]>([]);
+
+  // 保存済みの下書きを復元する。サーバーとハイドレーション時は undefined(localStorage が無い)、
+  // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
+  const savedDraft = useSyncExternalStore<string | null | undefined>(subscribeNothing, readDraft, () => undefined);
+  const [draftChecked, setDraftChecked] = useState(false);
+  if (!draftChecked && savedDraft !== undefined) {
+    // レンダー中に 1 回だけ state を合わせる(エフェクトで setState すると描画が二重になる)
+    setDraftChecked(true);
+    if (savedDraft !== null && savedDraft !== STARTER_SOURCE) {
+      setCode(savedDraft);
+      setCompiledSource(savedDraft);
+    }
+  }
 
   useEffect(() => {
-    const timer = setTimeout(() => setCompiledSource(code), 400);
+    const timer = setTimeout(() => {
+      setCompiledSource(code);
+      writeDraft(code);
+    }, 400);
     return () => clearTimeout(timer);
   }, [code]);
 
@@ -188,13 +252,33 @@ export default function EditPage() {
   function applySource(source: string) {
     setCode(source);
     setCompiledSource(source);
+    setProposal(null);
     setHasRendered(false);
     setResetToken((t) => t + 1);
   }
 
-  const bytes = new TextEncoder().encode(code).length;
-  const hasFragCoord = code.includes("gl_FragCoord");
-  const loopCheck = checkLoopsBounded(code);
+  function handlePropose(turnId: number, source: string) {
+    setProposal({ turnId, source });
+    setHasRendered(false);
+  }
+
+  function handleApplyProposal() {
+    if (proposal) applySource(proposal.source);
+  }
+
+  function handleRejectProposal() {
+    setProposal(null);
+    setHasRendered(false);
+  }
+
+  // 提案があれば、プレビューとチェックはその提案のコードを見る
+  const checkedSource = proposal?.source ?? code;
+  const diff = useMemo(() => (proposal ? diffLines(code, proposal.source) : null), [code, proposal]);
+  const diffCount = diff ? diffStats(diff) : null;
+
+  const bytes = byteLength(checkedSource);
+  const hasFragCoord = checkedSource.includes("gl_FragCoord");
+  const loopCheck = checkLoopsBounded(checkedSource);
 
   const checks: { key: string; label: string; ok: boolean | null; detail: string }[] = [
     {
@@ -230,6 +314,55 @@ export default function EditPage() {
   ];
   const passedCount = checks.filter((c) => c.ok === true).length;
   const allPassed = passedCount === checks.length;
+  // 入力直後はプレビューがまだ古いコードの結果なので、反映されるまで投稿させない
+  const upToDate = code === compiledSource;
+  const authReady = session.status === "ready" && session.configured;
+  const loggedIn = session.status === "ready" && session.user !== null;
+  const canProceed = allPassed && upToDate && authReady && proposal === null;
+  // AI はログイン必須。ログインの設定が無い環境(Cognito を繋いでいないローカルやモック)では
+  // 使える扱いにして、可否はサーバー(またはモック)の応答に任せる
+  const aiAccess: AiAccess = session.status !== "ready" ? "loading" : session.configured && !loggedIn ? "login" : "ready";
+
+  function goToLogin() {
+    writeDraft(code);
+    window.location.assign(loginHref("/edit"));
+  }
+
+  function handleProceed() {
+    if (!loggedIn) {
+      goToLogin();
+      return;
+    }
+    setSubmitErrors([]);
+    setSubmitOpen(true);
+  }
+
+  function updateForm<K extends keyof SubmitForm>(key: K, value: SubmitForm[K]) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handlePublish(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setSubmitErrors([]);
+    try {
+      const result = await submitWork({ ...form, source: code });
+      if (result.ok) {
+        writeDraft(null);
+        router.push(`/s/${result.slug}`);
+        return;
+      }
+      // セッションが切れていたら、下書きを残したままログインし直してもらう
+      if (result.status === 401) {
+        goToLogin();
+        return;
+      }
+      setSubmitErrors(result.errors);
+    } catch {
+      setSubmitErrors(["通信に失敗しました。もう一度お試しください"]);
+    }
+    setSubmitting(false);
+  }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
@@ -239,8 +372,8 @@ export default function EditPage() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-text-primary">Untitled</p>
-              <p className="text-xs tracking-wide text-text-secondary">下書き · 未保存</p>
+              <p className="truncate text-sm font-medium text-text-primary">{form.title.trim() || "Untitled"}</p>
+              <p className="text-xs tracking-wide text-text-secondary">下書き · このブラウザに自動保存</p>
             </div>
             <Menu>
               <MenuTrigger render={<Button variant="secondary" size="sm" />}>プリセット</MenuTrigger>
@@ -261,17 +394,35 @@ export default function EditPage() {
             </Button>
           </div>
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
-            <span className="flex-1">main.glsl</span>
+            <span className="flex-1">
+              main.glsl
+              {diffCount && (
+                <>
+                  {" · AI の提案を表示中 "}
+                  <span className="text-status-success-solid">+{diffCount.added}</span>{" "}
+                  <span className="text-status-danger-solid">−{diffCount.removed}</span>(未適用)
+                </>
+              )}
+            </span>
             <span>vec4 render(vec2 uv, vec2 p)</span>
           </div>
-          <ShaderCodeEditor value={code} onChange={setCode} />
+          {diff ? <CodeDiff lines={diff} /> : <ShaderCodeEditor value={code} onChange={setCode} />}
+          <AiPanel
+            baseSource={checkedSource}
+            pendingTurnId={proposal?.turnId ?? null}
+            access={aiAccess}
+            onLogin={goToLogin}
+            onPropose={handlePropose}
+            onApply={handleApplyProposal}
+            onReject={handleRejectProposal}
+          />
         </div>
 
         {/* 右: ステージ(ライブプレビュー + 審査チェック) */}
         <div className="flex w-full max-w-[45%] flex-col gap-4 overflow-auto border-l border-border-subtle p-4">
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle">
             <ShaderEditorPreview
-              source={compiledSource}
+              source={proposal?.source ?? compiledSource}
               playing={playing}
               attention={0}
               resetToken={resetToken}
@@ -320,12 +471,142 @@ export default function EditPage() {
         </div>
       </div>
 
-      {/* /submit はまだ無いので、いまは見た目だけ */}
-      <div className="flex items-center justify-end border-t border-border-subtle bg-bg-base px-8 py-4">
-        <Button variant="primary" size="md" disabled>
-          Submitへ進む
+      <div className="flex items-center justify-end gap-4 border-t border-border-subtle bg-bg-base px-8 py-4">
+        {proposal && <span className="text-xs text-text-muted">AI の提案を適用するか却下すると投稿できます</span>}
+        {!proposal && authReady && !loggedIn && (
+          <span className="text-xs text-text-muted">投稿にはログインが必要です(下書きは残ります)</span>
+        )}
+        <Button variant="primary" size="md" disabled={!canProceed} onClick={handleProceed}>
+          {loggedIn || !authReady ? "Submitへ進む" : "ログインして投稿"}
         </Button>
       </div>
+
+      <Dialog
+        open={submitOpen}
+        onOpenChange={(open) => {
+          if (!submitting) setSubmitOpen(open);
+        }}
+      >
+        <DialogContent className="w-full max-w-md">
+          <DialogTitle>作品を登録する</DialogTitle>
+          <DialogDescription>
+            {form.visibility === "public"
+              ? "作品ページは誰でも閲覧でき、Gallery に表示されます。"
+              : "作品ページは投稿者本人だけが閲覧できます。Gallery にも表示されません。"}
+          </DialogDescription>
+          <form onSubmit={handlePublish} className="mt-4 flex flex-col gap-3">
+            <Field label="タイトル" htmlFor="submit-title">
+              <Input
+                id="submit-title"
+                required
+                maxLength={TITLE_MAX}
+                value={form.title}
+                onChange={(e) => updateForm("title", e.target.value)}
+              />
+            </Field>
+            <Field label="名前(表示用・任意)" htmlFor="submit-author">
+              <Input
+                id="submit-author"
+                placeholder="Anonymous"
+                maxLength={AUTHOR_MAX}
+                value={form.author}
+                onChange={(e) => updateForm("author", e.target.value)}
+              />
+            </Field>
+            <Field label="ライセンス" htmlFor="submit-license">
+              <Select
+                value={form.license}
+                onValueChange={(value) => {
+                  if (typeof value === "string") updateForm("license", value);
+                }}
+              >
+                <SelectTrigger id="submit-license">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LICENSES.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 text-sm font-medium text-text-primary">公開範囲</legend>
+              <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
+                <input
+                  className="mt-1 accent-accent-default"
+                  type="radio"
+                  name="visibility"
+                  value="public"
+                  checked={form.visibility === "public"}
+                  onChange={() => updateForm("visibility", "public")}
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm text-text-primary">公開</span>
+                  <span className="text-xs text-text-muted">作品ページが Gallery に表示され、誰でも閲覧できます</span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
+                <input
+                  className="mt-1 accent-accent-default"
+                  type="radio"
+                  name="visibility"
+                  value="private"
+                  checked={form.visibility === "private"}
+                  onChange={() => updateForm("visibility", "private")}
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm text-text-primary">非公開</span>
+                  <span className="text-xs text-text-muted">投稿者本人だけが閲覧できます</span>
+                </span>
+              </label>
+            </fieldset>
+            <Field label="タグ(カンマ区切り・任意)" htmlFor="submit-tags">
+              <Input
+                id="submit-tags"
+                placeholder="noise, warp"
+                value={form.tags}
+                onChange={(e) => updateForm("tags", e.target.value)}
+              />
+            </Field>
+            <Field label="説明(任意)" htmlFor="submit-description">
+              <Textarea
+                id="submit-description"
+                rows={3}
+                maxLength={DESCRIPTION_MAX}
+                value={form.description}
+                onChange={(e) => updateForm("description", e.target.value)}
+              />
+            </Field>
+            {submitErrors.length > 0 && (
+              <ul className="flex flex-col gap-1 text-xs text-danger-solid">
+                {submitErrors.map((message) => (
+                  <li key={message}>{message}</li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex justify-end gap-2">
+              <DialogClose render={<Button type="button" variant="ghost" size="sm" disabled={submitting} />}>
+                キャンセル
+              </DialogClose>
+              <Button type="submit" variant="primary" size="sm" disabled={submitting}>
+                {submitting ? "登録中…" : form.visibility === "public" ? "公開する" : "非公開で登録"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function Field({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
     </div>
   );
 }
