@@ -1,7 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { Input } from "@frost-ui/react/atoms/input";
@@ -16,6 +25,7 @@ import { CodeDiff } from "@/components/CodeDiff";
 import { Header } from "@/components/Header";
 import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview, type ShaderEditorStats } from "@/components/ShaderEditorPreview";
+import { SplitHandle } from "@/components/SplitHandle";
 import {
   AUTHOR_MAX,
   byteLength,
@@ -165,6 +175,13 @@ const PRESETS: { id: string; label: string; source: string }[] = [
 // (既存の下書きはコードの文字列そのままで保存されている)。
 const DRAFT_KEY = "shaders-art:edit-draft";
 const TITLE_KEY = "shaders-art:edit-title";
+// コード欄とプレビュー欄の境界の位置(右側の幅の割合)。このブラウザでの好みとして覚えておく
+const SPLIT_KEY = "shaders-art:edit-split";
+const DEFAULT_PREVIEW_RATIO = 0.45;
+// 境界をどこまで動かせるか(それぞれの欄の最小幅)。プレビューは再生ボタンとバッジの行が
+// 折り返さない幅にする
+const MIN_CODE_WIDTH_PX = 360;
+const MIN_PREVIEW_WIDTH_PX = 360;
 
 function readDraft(): string | null {
   try {
@@ -193,6 +210,23 @@ function readTitle(): string | null {
     return localStorage.getItem(TITLE_KEY);
   } catch {
     return null;
+  }
+}
+
+function readSplit(): number | null {
+  try {
+    const ratio = Number(localStorage.getItem(SPLIT_KEY));
+    return ratio > 0 && ratio < 1 ? ratio : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSplit(ratio: number) {
+  try {
+    localStorage.setItem(SPLIT_KEY, String(ratio));
+  } catch {
+    // 覚えられなくても、幅は変えられる
   }
 }
 
@@ -243,11 +277,15 @@ export default function EditPage() {
   const [submitErrors, setSubmitErrors] = useState<string[]>([]);
   // Pre-publish checks は普段は閉じておく(落ちているものは閉じていても見せる)
   const [checksOpen, setChecksOpen] = useState(false);
+  // 右側(プレビュー)の幅の割合。境界(SplitHandle)のドラッグで変える
+  const [previewRatio, setPreviewRatio] = useState(DEFAULT_PREVIEW_RATIO);
+  const columnsRef = useRef<HTMLDivElement>(null);
 
   // 保存済みの下書きを復元する。サーバーとハイドレーション時は undefined(localStorage が無い)、
   // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
   const savedDraft = useSyncExternalStore<string | null | undefined>(subscribeNothing, readDraft, () => undefined);
   const savedTitle = useSyncExternalStore<string | null | undefined>(subscribeNothing, readTitle, () => undefined);
+  const savedSplit = useSyncExternalStore<number | null | undefined>(subscribeNothing, readSplit, () => undefined);
   const [draftChecked, setDraftChecked] = useState(false);
   if (!draftChecked && savedDraft !== undefined) {
     // レンダー中に 1 回だけ state を合わせる(エフェクトで setState すると描画が二重になる)
@@ -258,6 +296,12 @@ export default function EditPage() {
       setHistory(createHistory(savedDraft));
     }
     if (savedTitle) setForm((f) => ({ ...f, title: savedTitle }));
+    if (savedSplit) setPreviewRatio(savedSplit);
+  }
+
+  function changePreviewRatio(ratio: number) {
+    setPreviewRatio(ratio);
+    writeSplit(ratio);
   }
 
   useEffect(() => {
@@ -426,7 +470,7 @@ export default function EditPage() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <Header showSearch={false} showSubmit={false} />
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={columnsRef} className="flex flex-1 overflow-hidden">
         {/* 左: コード(編集可能) */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
@@ -506,8 +550,20 @@ export default function EditPage() {
           />
         </div>
 
-        {/* 右: ステージ(ライブプレビュー + 審査チェック) */}
-        <div className="flex w-full max-w-[45%] flex-col gap-4 overflow-auto border-l border-border-subtle p-4">
+        <SplitHandle
+          containerRef={columnsRef}
+          ratio={previewRatio}
+          minLeftPx={MIN_CODE_WIDTH_PX}
+          minRightPx={MIN_PREVIEW_WIDTH_PX}
+          onChange={changePreviewRatio}
+          onReset={() => changePreviewRatio(DEFAULT_PREVIEW_RATIO)}
+        />
+
+        {/* 右: ステージ(ライブプレビュー + 審査チェック)。幅は境界のドラッグで変わる */}
+        <div
+          className="flex shrink-0 flex-col gap-4 overflow-auto p-4"
+          style={{ width: `${previewRatio * 100}%`, minWidth: MIN_PREVIEW_WIDTH_PX }}
+        >
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle">
             <ShaderEditorPreview
               source={proposal?.source ?? compiledSource}
