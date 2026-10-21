@@ -56,6 +56,19 @@ export function checkLoopsBounded(source: string): { ok: boolean | null; detail:
   return { ok: true, detail: `max ${maxBound} iterations` };
 }
 
+/** コードだけを見る静的チェック。投稿(POST /api/works)と AI の提案(POST /api/ai/edit)で共有する */
+export function sourceErrors(source: string): string[] {
+  if (!source.trim()) return ["コードが空です"];
+  const errors: string[] = [];
+  const bytes = byteLength(source);
+  if (bytes > SIZE_BUDGET_BYTES) errors.push(`コードは ${SIZE_BUDGET_BYTES} バイト以内にしてください(現在 ${bytes})`);
+  if (!hasRenderSignature(source)) errors.push("vec4 render(vec2 uv, vec2 p) が見つかりません");
+  if (source.includes("gl_FragCoord")) errors.push("gl_FragCoord は使えません");
+  const loops = checkLoopsBounded(source);
+  if (loops.ok !== true) errors.push(`ループの上限を確認できません: ${loops.detail}`);
+  return errors;
+}
+
 /** POST /api/works の本文 */
 export interface SubmissionInput {
   title: string;
@@ -97,15 +110,7 @@ export function validateSubmission(input: unknown): ValidationResult {
 
   const source = typeof raw.source === "string" ? raw.source : "";
   const bytes = byteLength(source);
-  if (!source.trim()) {
-    errors.push("コードが空です");
-  } else {
-    if (bytes > SIZE_BUDGET_BYTES) errors.push(`コードは ${SIZE_BUDGET_BYTES} バイト以内にしてください(現在 ${bytes})`);
-    if (!hasRenderSignature(source)) errors.push("vec4 render(vec2 uv, vec2 p) が見つかりません");
-    if (source.includes("gl_FragCoord")) errors.push("gl_FragCoord は使えません");
-    const loops = checkLoopsBounded(source);
-    if (loops.ok !== true) errors.push(`ループの上限を確認できません: ${loops.detail}`);
-  }
+  errors.push(...sourceErrors(source));
 
   const license = LICENSES.find((l) => l.id === raw.license)?.id;
   if (!license) errors.push("ライセンスを選んでください");

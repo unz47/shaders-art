@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { Input } from "@frost-ui/react/atoms/input";
@@ -10,6 +10,8 @@ import { Textarea } from "@frost-ui/react/atoms/textarea";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@frost-ui/react/organisms/dialog";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
+import { type AiAccess, AiPanel } from "@/components/AiPanel";
+import { CodeDiff } from "@/components/CodeDiff";
 import { Header } from "@/components/Header";
 import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview, type ShaderEditorStats } from "@/components/ShaderEditorPreview";
@@ -24,6 +26,7 @@ import {
   TITLE_MAX,
   type WorkVisibility,
 } from "@/lib/submission";
+import { diffLines, diffStats } from "@/lib/lineDiff";
 import { loginHref, useSession } from "@/lib/useSession";
 import { submitWork } from "@/lib/works";
 
@@ -32,6 +35,8 @@ import { submitWork } from "@/lib/works";
 // コードが編集可能で、Pre-publish checksを常時計算して表示する。
 // 静的なチェック(サイズ・gl_FragCoord・ループ)は投稿時にサーバーでも同じルール
 // (lib/submission.ts)で確かめる。コンパイルとフレーム時間はブラウザでしか測れない。
+// 左下の AI パネルが提案を出している間は、エディタが差分表示に、プレビューとチェックが
+// 提案のコードに切り替わる。適用か却下を選ぶまで投稿はできない。
 
 const STARTER_SOURCE = ["vec4 render(vec2 uv, vec2 p) {", "  return vec4(uv, 0.5, 1.0);", "}"].join("\n");
 
@@ -204,6 +209,8 @@ export default function EditPage() {
   const [resetToken, setResetToken] = useState(0);
   const [stats, setStats] = useState<ShaderEditorStats>({ fps: 0, elapsed: 0, frameTimeMs: 0, error: null });
   const [hasRendered, setHasRendered] = useState(false);
+  // AI パネルが出している未適用の提案
+  const [proposal, setProposal] = useState<{ turnId: number; source: string } | null>(null);
 
   const session = useSession();
   const router = useRouter();
@@ -245,13 +252,33 @@ export default function EditPage() {
   function applySource(source: string) {
     setCode(source);
     setCompiledSource(source);
+    setProposal(null);
     setHasRendered(false);
     setResetToken((t) => t + 1);
   }
 
-  const bytes = byteLength(code);
-  const hasFragCoord = code.includes("gl_FragCoord");
-  const loopCheck = checkLoopsBounded(code);
+  function handlePropose(turnId: number, source: string) {
+    setProposal({ turnId, source });
+    setHasRendered(false);
+  }
+
+  function handleApplyProposal() {
+    if (proposal) applySource(proposal.source);
+  }
+
+  function handleRejectProposal() {
+    setProposal(null);
+    setHasRendered(false);
+  }
+
+  // 提案があれば、プレビューとチェックはその提案のコードを見る
+  const checkedSource = proposal?.source ?? code;
+  const diff = useMemo(() => (proposal ? diffLines(code, proposal.source) : null), [code, proposal]);
+  const diffCount = diff ? diffStats(diff) : null;
+
+  const bytes = byteLength(checkedSource);
+  const hasFragCoord = checkedSource.includes("gl_FragCoord");
+  const loopCheck = checkLoopsBounded(checkedSource);
 
   const checks: { key: string; label: string; ok: boolean | null; detail: string }[] = [
     {
@@ -291,7 +318,10 @@ export default function EditPage() {
   const upToDate = code === compiledSource;
   const authReady = session.status === "ready" && session.configured;
   const loggedIn = session.status === "ready" && session.user !== null;
-  const canProceed = allPassed && upToDate && authReady;
+  const canProceed = allPassed && upToDate && authReady && proposal === null;
+  // AI はログイン必須。ログインの設定が無い環境(Cognito を繋いでいないローカルやモック)では
+  // 使える扱いにして、可否はサーバー(またはモック)の応答に任せる
+  const aiAccess: AiAccess = session.status !== "ready" ? "loading" : session.configured && !loggedIn ? "login" : "ready";
 
   function goToLogin() {
     writeDraft(code);
@@ -364,17 +394,35 @@ export default function EditPage() {
             </Button>
           </div>
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
-            <span className="flex-1">main.glsl</span>
+            <span className="flex-1">
+              main.glsl
+              {diffCount && (
+                <>
+                  {" · AI の提案を表示中 "}
+                  <span className="text-status-success-solid">+{diffCount.added}</span>{" "}
+                  <span className="text-status-danger-solid">−{diffCount.removed}</span>(未適用)
+                </>
+              )}
+            </span>
             <span>vec4 render(vec2 uv, vec2 p)</span>
           </div>
-          <ShaderCodeEditor value={code} onChange={setCode} />
+          {diff ? <CodeDiff lines={diff} /> : <ShaderCodeEditor value={code} onChange={setCode} />}
+          <AiPanel
+            baseSource={checkedSource}
+            pendingTurnId={proposal?.turnId ?? null}
+            access={aiAccess}
+            onLogin={goToLogin}
+            onPropose={handlePropose}
+            onApply={handleApplyProposal}
+            onReject={handleRejectProposal}
+          />
         </div>
 
         {/* 右: ステージ(ライブプレビュー + 審査チェック) */}
         <div className="flex w-full max-w-[45%] flex-col gap-4 overflow-auto border-l border-border-subtle p-4">
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle">
             <ShaderEditorPreview
-              source={compiledSource}
+              source={proposal?.source ?? compiledSource}
               playing={playing}
               attention={0}
               resetToken={resetToken}
@@ -424,7 +472,10 @@ export default function EditPage() {
       </div>
 
       <div className="flex items-center justify-end gap-4 border-t border-border-subtle bg-bg-base px-8 py-4">
-        {authReady && !loggedIn && <span className="text-xs text-text-muted">投稿にはログインが必要です(下書きは残ります)</span>}
+        {proposal && <span className="text-xs text-text-muted">AI の提案を適用するか却下すると投稿できます</span>}
+        {!proposal && authReady && !loggedIn && (
+          <span className="text-xs text-text-muted">投稿にはログインが必要です(下書きは残ります)</span>
+        )}
         <Button variant="primary" size="md" disabled={!canProceed} onClick={handleProceed}>
           {loggedIn || !authReady ? "Submitへ進む" : "ログインして投稿"}
         </Button>
