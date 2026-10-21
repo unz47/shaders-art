@@ -7,6 +7,7 @@ import { Button } from "@frost-ui/react/atoms/button";
 import { Input } from "@frost-ui/react/atoms/input";
 import { Label } from "@frost-ui/react/atoms/label";
 import { Textarea } from "@frost-ui/react/atoms/textarea";
+import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@frost-ui/react/organisms/accordion";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@frost-ui/react/organisms/dialog";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
@@ -218,6 +219,8 @@ export default function EditPage() {
   const [form, setForm] = useState<SubmitForm>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitErrors, setSubmitErrors] = useState<string[]>([]);
+  // Pre-publish checks は普段は閉じておく(落ちているものは閉じていても見せる)
+  const [checksOpen, setChecksOpen] = useState(false);
 
   // 保存済みの下書きを復元する。サーバーとハイドレーション時は undefined(localStorage が無い)、
   // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
@@ -280,7 +283,7 @@ export default function EditPage() {
   const hasFragCoord = checkedSource.includes("gl_FragCoord");
   const loopCheck = checkLoopsBounded(checkedSource);
 
-  const checks: { key: string; label: string; ok: boolean | null; detail: string }[] = [
+  const checks: PrePublishCheck[] = [
     {
       key: "compiles",
       label: "Compiles",
@@ -313,6 +316,7 @@ export default function EditPage() {
     },
   ];
   const passedCount = checks.filter((c) => c.ok === true).length;
+  const failedChecks = checks.filter((c) => c.ok === false);
   const allPassed = passedCount === checks.length;
   // 入力直後はプレビューがまだ古いコードの結果なので、反映されるまで投稿させない
   const upToDate = code === compiledSource;
@@ -443,31 +447,36 @@ export default function EditPage() {
             <Badge>{stats.elapsed.toFixed(1)} s</Badge>
           </div>
 
-          <div className="rounded-surface border border-border-subtle">
-            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-              <span className="text-sm font-medium text-text-primary">Pre-publish checks</span>
-              <span className={`text-xs ${allPassed ? "text-text-muted" : "text-danger-solid"}`}>
-                {passedCount} / {checks.length} passed
-              </span>
-            </div>
-            <div className="flex flex-col">
-              {checks.map((c) => (
-                <div key={c.key} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                  <span
-                    className={`w-4 shrink-0 text-center ${
-                      c.ok === null ? "text-text-muted" : c.ok ? "text-accent-default" : "text-danger-solid"
-                    }`}
-                  >
-                    {c.ok === null ? "…" : c.ok ? "✓" : "✕"}
-                  </span>
-                  <span className={`flex-1 ${c.ok === false ? "text-danger-solid" : "text-text-primary"}`}>{c.label}</span>
-                  <span className={`font-mono text-xs ${c.ok === false ? "text-danger-solid" : "text-text-muted"}`}>
-                    {c.detail}
-                  </span>
+          {/* 普段は閉じておき、通過数だけ見せる。落ちているチェックは閉じていてもその行だけ出す。
+              見出しを押すと全部開く */}
+          <Accordion
+            className="rounded-surface border border-border-subtle"
+            value={checksOpen ? ["checks"] : []}
+            onValueChange={(value) => setChecksOpen(value.includes("checks"))}
+          >
+            <AccordionItem value="checks" className="border-t-0">
+              <AccordionTrigger className="px-4 py-3">
+                <span className="flex-1">Pre-publish checks</span>
+                <span className={`text-xs font-normal ${allPassed ? "text-text-muted" : "text-danger-solid"}`}>
+                  {passedCount} / {checks.length} passed
+                </span>
+              </AccordionTrigger>
+              {!checksOpen && failedChecks.length > 0 && (
+                <div className="flex flex-col border-t border-border-subtle">
+                  {failedChecks.map((c) => (
+                    <CheckRow key={c.key} check={c} />
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
+              <AccordionPanel>
+                <div className="flex flex-col border-t border-border-subtle">
+                  {checks.map((c) => (
+                    <CheckRow key={c.key} check={c} />
+                  ))}
+                </div>
+              </AccordionPanel>
+            </AccordionItem>
+          </Accordion>
 
           {/* 投稿はチェックのすぐ下に置く(画面下の全幅バーはやめ、左はコードと AI、右は確認と投稿に分ける) */}
           <div className="flex items-center justify-end gap-4">
@@ -599,6 +608,25 @@ export default function EditPage() {
           </form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+type PrePublishCheck = { key: string; label: string; ok: boolean | null; detail: string };
+
+function CheckRow({ check }: { check: PrePublishCheck }) {
+  const failed = check.ok === false;
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 text-sm">
+      <span
+        className={`w-4 shrink-0 text-center ${
+          check.ok === null ? "text-text-muted" : check.ok ? "text-accent-default" : "text-danger-solid"
+        }`}
+      >
+        {check.ok === null ? "…" : check.ok ? "✓" : "✕"}
+      </span>
+      <span className={`flex-1 ${failed ? "text-danger-solid" : "text-text-primary"}`}>{check.label}</span>
+      <span className={`font-mono text-xs ${failed ? "text-danger-solid" : "text-text-muted"}`}>{check.detail}</span>
     </div>
   );
 }
