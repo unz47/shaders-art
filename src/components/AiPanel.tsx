@@ -3,7 +3,6 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
-import { Kbd } from "@frost-ui/react/atoms/kbd";
 import { SparkleIcon } from "@/components/SparkleIcon";
 import { AI_PROMPT_MAX, requestAiEdit, type AiTurnSummary } from "@/lib/aiEdit";
 import { diffLines, diffStats } from "@/lib/lineDiff";
@@ -181,22 +180,23 @@ export function AiPanel({
             }
             className="resize-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
           />
-          <div className="flex items-center justify-between gap-2">
-            <span className="rounded-control border border-border-subtle bg-bg-surface px-2 py-0.5 font-mono text-[11px] text-text-secondary">
-              @ {pendingTurnId !== null ? "AI の提案" : "main.glsl"}
-            </span>
-            <div className="flex items-center gap-2">
-              <Kbd>⌘ ↵</Kbd>
-              {busy ? (
-                <Button type="button" variant="ghost" size="sm" onClick={() => abortRef.current?.abort()}>
-                  停止
-                </Button>
-              ) : (
-                <Button type="submit" variant="secondary" size="sm" disabled={!draft.trim() || access !== "ready"}>
-                  送信
-                </Button>
-              )}
-            </div>
+          <div className="flex justify-end">
+            {busy ? (
+              <Button type="button" variant="ghost" size="sm" onClick={() => abortRef.current?.abort()}>
+                停止
+              </Button>
+            ) : (
+              // ⌘↵(Ctrl+↵)でも送れる。画面には出さず、ボタンの説明にだけ書く
+              <Button
+                type="submit"
+                variant="secondary"
+                size="sm"
+                title="⌘↵ でも送信できます"
+                disabled={!draft.trim() || access !== "ready"}
+              >
+                送信
+              </Button>
+            )}
           </div>
         </form>
       )}
@@ -247,9 +247,6 @@ function TurnView({
               )}
             </ul>
             <div className="flex items-center gap-2 pl-6">
-              <span className="rounded-control border border-border-subtle bg-bg-surface px-2 py-0.5 font-mono text-[11px] text-text-secondary">
-                main.glsl
-              </span>
               <span className="font-mono text-[11px] text-status-success-solid">+{turn.stats.added}</span>
               <span className="font-mono text-[11px] text-status-danger-solid">−{turn.stats.removed}</span>
               <div className="flex-1" />

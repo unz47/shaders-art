@@ -159,9 +159,11 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
 ];
 
-// 下書きはこのブラウザに自動保存する。投稿前のログインで Hosted UI に遷移しても
-// 書いたコードが消えないように。
+// 下書き(コードとタイトル)はこのブラウザに自動保存する。投稿前のログインで Hosted UI に
+// 遷移しても書いたものが消えないように。タイトルは後から足したので別のキーに置く
+// (既存の下書きはコードの文字列そのままで保存されている)。
 const DRAFT_KEY = "shaders-art:edit-draft";
+const TITLE_KEY = "shaders-art:edit-title";
 
 function readDraft(): string | null {
   try {
@@ -182,6 +184,23 @@ function writeDraft(source: string | null) {
     else localStorage.setItem(DRAFT_KEY, source);
   } catch {
     // プライベートブラウジングなどで使えなくても、編集自体は続けられる
+  }
+}
+
+function readTitle(): string | null {
+  try {
+    return localStorage.getItem(TITLE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeTitle(title: string | null) {
+  try {
+    if (!title) localStorage.removeItem(TITLE_KEY);
+    else localStorage.setItem(TITLE_KEY, title);
+  } catch {
+    // writeDraft と同じく、保存できなくても編集は続けられる
   }
 }
 
@@ -225,6 +244,7 @@ export default function EditPage() {
   // 保存済みの下書きを復元する。サーバーとハイドレーション時は undefined(localStorage が無い)、
   // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
   const savedDraft = useSyncExternalStore<string | null | undefined>(subscribeNothing, readDraft, () => undefined);
+  const savedTitle = useSyncExternalStore<string | null | undefined>(subscribeNothing, readTitle, () => undefined);
   const [draftChecked, setDraftChecked] = useState(false);
   if (!draftChecked && savedDraft !== undefined) {
     // レンダー中に 1 回だけ state を合わせる(エフェクトで setState すると描画が二重になる)
@@ -233,6 +253,7 @@ export default function EditPage() {
       setCode(savedDraft);
       setCompiledSource(savedDraft);
     }
+    if (savedTitle) setForm((f) => ({ ...f, title: savedTitle }));
   }
 
   useEffect(() => {
@@ -345,6 +366,12 @@ export default function EditPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  // タイトルはエディタの上と投稿ダイアログのどちらからでも変えられ、下書きと一緒に保存する
+  function updateTitle(title: string) {
+    updateForm("title", title);
+    writeTitle(title);
+  }
+
   async function handlePublish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
@@ -353,6 +380,7 @@ export default function EditPage() {
       const result = await submitWork({ ...form, source: code });
       if (result.ok) {
         writeDraft(null);
+        writeTitle(null);
         router.push(`/s/${result.slug}`);
         return;
       }
@@ -376,7 +404,15 @@ export default function EditPage() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-text-primary">{form.title.trim() || "Untitled"}</p>
+              {/* その場で編集できるタイトル。投稿ダイアログのタイトル欄と同じ値 */}
+              <input
+                aria-label="作品のタイトル"
+                value={form.title}
+                onChange={(e) => updateTitle(e.target.value)}
+                placeholder="Untitled"
+                maxLength={TITLE_MAX}
+                className="-mx-1 w-full truncate rounded-control bg-transparent px-1 text-sm font-medium text-text-primary outline-none placeholder:text-text-muted hover:bg-bg-raised focus:bg-bg-raised"
+              />
               <p className="text-xs tracking-wide text-text-secondary">下書き · このブラウザに自動保存</p>
             </div>
             <Menu>
@@ -397,19 +433,16 @@ export default function EditPage() {
               リセット
             </Button>
           </div>
-          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
-            <span className="flex-1">
-              main.glsl
-              {diffCount && (
-                <>
-                  {" · AI の提案を表示中 "}
-                  <span className="text-status-success-solid">+{diffCount.added}</span>{" "}
-                  <span className="text-status-danger-solid">−{diffCount.removed}</span>(未適用)
-                </>
-              )}
-            </span>
-            <span>vec4 render(vec2 uv, vec2 p)</span>
-          </div>
+          {/* ファイル名と render のヒントのバーは置かない(作品は 1 ファイルだけなので)。
+              AI の提案を差分で見せている間だけ、その旨を出す */}
+          {diffCount && (
+            <div className="flex items-center gap-1.5 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
+              AI の提案を表示中
+              <span className="text-status-success-solid">+{diffCount.added}</span>
+              <span className="text-status-danger-solid">−{diffCount.removed}</span>
+              (未適用)
+            </div>
+          )}
           {diff ? <CodeDiff lines={diff} /> : <ShaderCodeEditor value={code} onChange={setCode} />}
           <AiPanel
             baseSource={checkedSource}
@@ -511,7 +544,7 @@ export default function EditPage() {
                 required
                 maxLength={TITLE_MAX}
                 value={form.title}
-                onChange={(e) => updateForm("title", e.target.value)}
+                onChange={(e) => updateTitle(e.target.value)}
               />
             </Field>
             <Field label="名前(表示用・任意)" htmlFor="submit-author">
