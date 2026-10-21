@@ -62,14 +62,7 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
         <div className="flex flex-wrap items-end gap-sp-md">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <h1 className="text-2xl font-medium text-text-primary">すべての作品</h1>
-            <p className="font-mono text-xs text-text-muted">
-              {data ? `${data.total} works${sort === "collected" ? ` · うち収蔵 ${data.collectedTotal}` : ""}` : " "}
-            </p>
-            {sort === "collected" && (
-              <p className="text-[13px] text-text-muted">
-                収蔵作品が先頭に、新しく収蔵した順で並びます(No. は収蔵番号)。その後ろに未収蔵の作品が続きます。
-              </p>
-            )}
+            <p className="font-mono text-xs text-text-muted">{data ? `${data.total} works` : " "}</p>
           </div>
           <div className="flex items-center gap-2.5">
             <span id="works-sort-label" className="text-[13px] text-text-secondary">
@@ -130,7 +123,7 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
             }`}
           >
             {data.items.map((work) => (
-              <WorkCard key={work.slug} work={work} info={sort === "collected" && work.collected ? "collection" : "time"} />
+              <WorkCard key={work.slug} work={work} />
             ))}
           </div>
         )}

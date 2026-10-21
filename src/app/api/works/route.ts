@@ -7,7 +7,7 @@ import { getSession, isSameOriginRequest } from "@/lib/server/session";
 import { slugify, validateSubmission } from "@/lib/submission";
 import { parsePage, parseSort, queryWorks } from "@/lib/worksQuery";
 
-// GET  /api/works?sort=new|collected|short&page=N → { items, page, pageCount, total, collectedTotal }
+// GET  /api/works?sort=new|popular|short&page=N → { items, page, pageCount, total }
 //      公開作品を並べて 24 件ずつ返す(lib/worksQuery)。一覧もホバー再生用に source を含む
 // POST /api/works(要ログイン)→ 201 { slug }
 // infra/functions/works.ts(API Gateway + Lambda版)から移植し、SSR と同じ Lambda で動かしている。

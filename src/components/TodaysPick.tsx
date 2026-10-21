@@ -26,8 +26,6 @@ export function TodaysPick({ work, className = "" }: { work: WorkSummary; classN
     () => window.matchMedia(REDUCED_MOTION).matches,
     () => false,
   );
-  const label =
-    work.collectionNo !== undefined ? `TODAY'S PICK  ·  収蔵 No.${String(work.collectionNo).padStart(3, "0")}` : "TODAY'S PICK";
 
   return (
     <Link href={`/s/${work.slug}/`} className={`group relative block overflow-hidden rounded-2xl bg-black ${className}`}>
@@ -42,7 +40,7 @@ export function TodaysPick({ work, className = "" }: { work: WorkSummary; classN
       )}
       <div className="pointer-events-none absolute inset-x-6 bottom-6 flex flex-wrap items-end gap-4 sm:inset-x-10 sm:bottom-10">
         <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-          <span className="whitespace-pre font-mono text-[11px] tracking-[0.08em] text-white/75">{label}</span>
+          <span className="font-mono text-[11px] tracking-[0.08em] text-white/75">TODAY&apos;S PICK</span>
           <span className="truncate text-3xl font-medium tracking-tight text-white sm:text-[44px] sm:leading-tight">
             {work.title}
           </span>
