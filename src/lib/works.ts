@@ -1,5 +1,6 @@
 import type { MockWork } from "@/mocks/works/data";
 import type { SubmissionInput } from "@/lib/submission";
+import type { WorksPage, WorksSort } from "@/lib/worksQuery";
 
 // 既定は同じアプリの Route Handler(/api)。本番も CDK がビルド時に "/api" を渡す。
 // モックに戻したいときは NEXT_PUBLIC_API_MOCK=1 pnpm dev で上書きする。
@@ -9,13 +10,13 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 export type Work = MockWork;
 /** 一覧の 1 件ぶん。ホバー再生用に source も含む(詳細と同じ形) */
 export type WorkSummary = Work;
-export type WorksTab = "collection" | "new";
 
-export async function getWorks(tab: WorksTab): Promise<WorkSummary[]> {
-  const res = await fetch(`${BASE}/works?tab=${tab}`);
+/** 公開作品の一覧を、並べて 1 ページぶん(lib/worksQuery) */
+export async function getWorks({ sort, page }: { sort: WorksSort; page: number }): Promise<WorksPage<WorkSummary>> {
+  const params = new URLSearchParams({ sort, page: String(page) });
+  const res = await fetch(`${BASE}/works?${params}`);
   if (!res.ok) throw new Error(`一覧を取得できませんでした (${res.status})`);
-  const { items } = (await res.json()) as { items: WorkSummary[] };
-  return items;
+  return (await res.json()) as WorksPage<WorkSummary>;
 }
 
 export async function getWork(slug: string): Promise<Work | null> {
