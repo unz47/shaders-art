@@ -24,7 +24,7 @@ import searchIcon from "@/icons/search.svg";
 // 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/Submit/テーマ切り替え
 // Rooms は行き先が未設計のため削除。
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
-// Submit(/edit へ)とアバター(押すとメールアドレスと Sign out のメニュー)を出す。
+// Submit(/edit へ)とアバター(押すとメールアドレス・自分の作品・Sign out のメニュー)を出す。
 // Sign in とアバターは一番右に置く。閲覧はログイン不要。
 export function Header({ showSearch = true, showSubmit = true }: { showSearch?: boolean; showSubmit?: boolean }) {
   // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
@@ -139,6 +139,7 @@ function AccountMenu({ user }: { user: SessionUser }) {
             </div>
           </MenuGroup>
           <MenuSeparator />
+          <MenuItem render={<Link href="/me" />}>自分の作品</MenuItem>
           <MenuItem onClick={() => logoutForm.current?.requestSubmit()}>Sign out</MenuItem>
         </MenuContent>
       </Menu>
