@@ -47,6 +47,7 @@ import {
   type WorkVisibility,
 } from "@/lib/submission";
 import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
+import { renderGif } from "@/lib/renderGif";
 import { renderStillPng } from "@/lib/renderStill";
 import { buildStandaloneHtml, downloadBlob, exportFileName, toShadertoy } from "@/lib/shaderExport";
 import { embedSnippet, stageUrlForSource } from "@/lib/stageUrl";
@@ -198,6 +199,14 @@ const STILL_SIZES = [
   { label: "1080×1920(縦・スマホ壁紙)", width: 1080, height: 1920, suffix: "1080x1920" },
   { label: "1080×1080(正方形・SNS)", width: 1080, height: 1080, suffix: "1080x1080" },
 ] as const;
+
+// 書き出しメニューの GIF。長さと大きさの組み合わせ(20fps)。大きく長いほどファイルも大きくなる
+const GIF_PRESETS = [
+  { label: "3 秒・480×270(軽い)", width: 480, height: 270, seconds: 3, suffix: "3s" },
+  { label: "5 秒・640×360", width: 640, height: 360, seconds: 5, suffix: "5s" },
+  { label: "5 秒・480×480(正方形・SNS)", width: 480, height: 480, seconds: 5, suffix: "5s-square" },
+] as const;
+const GIF_FPS = 20;
 
 // 境界をどこまで動かせるか(それぞれの欄の最小幅)。プレビューは再生ボタンとバッジの行が
 // 折り返さない幅にする
@@ -353,6 +362,29 @@ export default function EditPage() {
     } catch (error) {
       const description = error instanceof Error ? error.message : undefined;
       toast.add({ title: "画像を書き出せませんでした", description, priority: "high" });
+    }
+  }
+
+  // GIF は数秒かかるので、進み具合を「書き出し」ボタンに出す(書き出し中は押せない)
+  const [gifProgress, setGifProgress] = useState<number | null>(null);
+
+  async function exportGif(preset: (typeof GIF_PRESETS)[number]) {
+    setGifProgress(0);
+    try {
+      const blob = await renderGif(exportSource, {
+        width: preset.width,
+        height: preset.height,
+        seconds: preset.seconds,
+        fps: GIF_FPS,
+        startTime: stats.elapsed,
+        onProgress: setGifProgress,
+      });
+      downloadBlob(blob, exportFileName(form.title, preset.suffix, "gif"));
+    } catch (error) {
+      const description = error instanceof Error ? error.message : undefined;
+      toast.add({ title: "GIF を書き出せませんでした", description, priority: "high" });
+    } finally {
+      setGifProgress(null);
     }
   }
 
@@ -717,13 +749,24 @@ export default function EditPage() {
               先頭へ
             </Button>
             <Menu>
-              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!canExport} />}>書き出し</MenuTrigger>
+              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!canExport || gifProgress !== null} />}>
+                {gifProgress === null ? "書き出し" : `GIF を作成中 ${Math.round(gifProgress * 100)}%`}
+              </MenuTrigger>
               <MenuContent align="start">
                 <MenuGroup>
                   <MenuGroupLabel>画像(PNG・いまのコマ)</MenuGroupLabel>
                   {STILL_SIZES.map((size) => (
                     <MenuItem key={size.suffix} onClick={() => void exportPng(size)}>
                       {size.label}
+                    </MenuItem>
+                  ))}
+                </MenuGroup>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>GIF(ループ・いまのコマから)</MenuGroupLabel>
+                  {GIF_PRESETS.map((preset) => (
+                    <MenuItem key={preset.suffix} onClick={() => void exportGif(preset)}>
+                      {preset.label}
                     </MenuItem>
                   ))}
                 </MenuGroup>
