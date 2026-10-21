@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderThumbnail } from "@/components/ShaderThumbnail";
 import type { WorkSummary } from "@/lib/works";
 
@@ -12,8 +13,11 @@ export function WorkTile({ work, className = "" }: { work: WorkSummary; classNam
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[150px] max-h-full bg-linear-to-b from-transparent via-black/40 to-black/80" />
       <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-col gap-1">
         <span className="truncate text-[15px] font-medium text-white">{work.title}</span>
-        <span className="truncate font-mono text-[11px] text-white/80">
-          {work.author} · {work.bytes} B
+        <span className="flex items-center gap-2 truncate font-mono text-[11px] text-white/80">
+          <span className="truncate">
+            {work.author} · {work.bytes} B
+          </span>
+          <FavoriteCount work={work} />
         </span>
       </div>
       <div className="pointer-events-none absolute inset-0 rounded-[14px] opacity-0 ring-2 ring-accent-default ring-inset transition-opacity group-hover:opacity-100" />
