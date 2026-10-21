@@ -468,17 +468,18 @@ export default function EditPage() {
               ))}
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="flex items-center justify-end gap-4 border-t border-border-subtle bg-bg-base px-8 py-4">
-        {proposal && <span className="text-xs text-text-muted">AI の提案を適用するか却下すると投稿できます</span>}
-        {!proposal && authReady && !loggedIn && (
-          <span className="text-xs text-text-muted">投稿にはログインが必要です(下書きは残ります)</span>
-        )}
-        <Button variant="primary" size="md" disabled={!canProceed} onClick={handleProceed}>
-          {loggedIn || !authReady ? "Submitへ進む" : "ログインして投稿"}
-        </Button>
+          {/* 投稿はチェックのすぐ下に置く(画面下の全幅バーはやめ、左はコードと AI、右は確認と投稿に分ける) */}
+          <div className="flex items-center justify-end gap-4">
+            {proposal && <span className="flex-1 text-xs text-text-muted">AI の提案を適用するか却下すると投稿できます</span>}
+            {!proposal && authReady && !loggedIn && (
+              <span className="flex-1 text-xs text-text-muted">投稿にはログインが必要です(下書きは残ります)</span>
+            )}
+            <Button variant="primary" size="md" disabled={!canProceed} onClick={handleProceed}>
+              {loggedIn || !authReady ? "Submitへ進む" : "ログインして投稿"}
+            </Button>
+          </div>
+        </div>
       </div>
 
       <Dialog
