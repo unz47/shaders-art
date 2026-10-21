@@ -99,6 +99,9 @@ export function ShaderEditorPreview({
       if (w === 0 || h === 0) return;
       renderer.setSize(w, h, false);
       uniforms.resolution.value.set(w, h);
+      // サイズを変えると canvas の中身が消える。次のフレームを待つと消えた状態が一瞬見えて
+      // 点滅するので(Pre-publish checks の開閉アニメーション中など)、その場で描き直す
+      if (!errored) renderer.render(scene, camera);
     }
     resize();
     const ro = new ResizeObserver(resize);
