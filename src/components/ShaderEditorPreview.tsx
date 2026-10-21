@@ -22,12 +22,15 @@ export function ShaderEditorPreview({
   attention,
   resetToken,
   onStats,
+  speed = 1,
 }: {
   source: string;
   playing: boolean;
   attention: number;
   resetToken: number;
   onStats: (stats: ShaderEditorStats) => void;
+  /** 再生速度の倍率(配信背景の /stage で ?speed= から渡す) */
+  speed?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +44,11 @@ export function ShaderEditorPreview({
   useEffect(() => {
     attentionRef.current = attention;
   }, [attention]);
+
+  const speedRef = useRef(speed);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   const onStatsRef = useRef(onStats);
   useEffect(() => {
@@ -143,7 +151,7 @@ export function ShaderEditorPreview({
       // 報告することで、エラーが発生したtickでも正しい状態が伝わるようにする。
       if (!errored) {
         if (playingRef.current) {
-          elapsedRef.current += dt;
+          elapsedRef.current += dt * speedRef.current;
         }
         uniforms.time.value = elapsedRef.current;
         uniforms.attention.value = attentionRef.current;
