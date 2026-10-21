@@ -93,3 +93,51 @@ export function queryWorks<T extends Work>(all: T[], { sort, page }: { sort: Wor
     collectedTotal: works.filter((work) => work.collected).length,
   };
 }
+
+// ---- Home(案 A+B ①)----
+
+/** Home の Collection に並べる数(今日の 1 点の横に 2 つ + モザイク 6 つ) */
+export const HOME_COLLECTION_COUNT = 8;
+/** Home の New に並べる数(4 列 × 2 段) */
+export const HOME_LATEST_COUNT = 8;
+
+const DAY = 86_400_000;
+const JST_OFFSET = 9 * 3_600_000;
+
+/** 今日の 1 点が何番目か。日本時間の日付が変わるごとに 1 つずつ進み、一周したら最初に戻る */
+export function pickIndex(count: number, now: number): number {
+  if (count <= 0) return -1;
+  return Math.floor((now + JST_OFFSET) / DAY) % count;
+}
+
+export interface HomeSelection<T> {
+  /** 今日の 1 点。収蔵作品が無ければいちばん新しい作品 */
+  pick: T | null;
+  /** 今日の 1 点を除いた収蔵作品(新しく収蔵した順) */
+  collection: T[];
+  collectedTotal: number;
+  /** 新しい順 */
+  latest: T[];
+  total: number;
+}
+
+/**
+ * Home に出す作品を選ぶ。今日の 1 点は運営が手で選ばなくても毎日入れ替わるよう、
+ * 収蔵作品を収蔵番号の順に 1 日 1 つずつ出す。
+ */
+export function selectHome<T extends Work>(all: T[], now: number): HomeSelection<T> {
+  const works = numberCollection(all.filter(isPublicWork));
+  const newest = sortWorks(works, "new");
+  const collected = works.filter((work) => work.collected).sort((a, b) => (a.collectionNo ?? 0) - (b.collectionNo ?? 0));
+  const pick = (collected.length > 0 ? collected[pickIndex(collected.length, now)] : newest[0]) ?? null;
+  return {
+    pick,
+    collection: sortWorks(
+      collected.filter((work) => work !== pick),
+      "collected",
+    ).slice(0, HOME_COLLECTION_COUNT),
+    collectedTotal: collected.length,
+    latest: newest.slice(0, HOME_LATEST_COUNT),
+    total: works.length,
+  };
+}
