@@ -7,7 +7,7 @@ GLSL を書いて動かせる実行環境と、作品を展示する「博物館
 - フロントは Next.js(App Router)。作品 API は同じアプリの Route Handler(`/api/works`)で、DynamoDB を読む
 - 本番は AWS。CloudFront(+WAF) → Lambda(OpenNext で SSR)→ DynamoDB。IaC は `infra/`(CDK)
   - Lambda の Function URL は IAM 認証。CloudFront の Lambda@Edge が署名して呼ぶので、CloudFront(WAF)を通らない直接アクセスはできない
-- `/edit` の左下に「AI と作る」パネル(要ログイン)。推論は Amazon Bedrock(いまは Qwen3 Coder)で、
+- `/edit` の左下に「AI と作る」パネル(要ログイン)。推論は Amazon Bedrock(既定は Qwen3 Coder。パネルでモデルを選べる)で、
   Lambda の実行ロールで呼ぶので API キーは持たない。返答はストリーミングで返す(`POST /api/ai/edit`、SSE)
 
 ## 開発
@@ -58,6 +58,10 @@ Claude のときだけ、安全性の判定で断られたときの切り替え�
 このアカウントでは Bedrock の Claude が「is not available for this account」(403)で使えない(AWS サポートに解除を依頼する)。
 使えるようになっても、東京のマントルにある Claude は Opus 4.8 / 4.7 / Haiku 4.5 まで(Opus 5.5 などは us-east-1 にしか無い)。
 
+利用者はパネルの送信ボタンの左で、`src/lib/aiModels.ts` の一覧(Qwen3 Coder 480B / 30B、gpt-oss-120b、MiniMax M2.5、
+Devstral 2、Kimi K2.5)からモデルを選べる。サーバーは一覧に無いモデルを受け付けず、選ばれていなければ `AI_MODEL` を使う。
+一覧に足すときは、東京で呼べること(`aws bedrock get-foundation-model-availability`)と、コードブロックで答えられることを確かめる。
+
 `AI_MODEL` が無いときは「AI はまだ設定されていません」と返る。`NEXT_PUBLIC_API_MOCK=1` なら AI もモック
 (依頼文をコメントとして足すだけの提案)になる。
 
@@ -72,7 +76,8 @@ pnpm cdk deploy --all
 `cdk deploy` の中で OpenNext のビルド(`next build` → Lambda 用バンドル)まで走る。
 初回は `pnpm seed`(`TABLE_NAME` を出力から渡す)で仮データを入れる。
 
-AI と作るのモデルは `infra/lib/nextjs-site.ts` の `AI_MODEL`。Claude にするときは、ap-northeast-1 で
+AI と作るの既定のモデルは `infra/lib/nextjs-site.ts` の `AI_MODEL`。Lambda には、それと `src/lib/aiModels.ts` の
+一覧の全部を呼ぶ権限を渡す(一覧を変えたらデプロイし直す)。Claude にするときは、ap-northeast-1 で
 そのモデルの利用契約を結んでおく(`aws bedrock create-foundation-model-agreement`)。
 
 ### 本番でログインを有効にする(初回だけ 2 段階)

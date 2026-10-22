@@ -47,7 +47,9 @@ export async function POST(request: NextRequest) {
       const ping = setInterval(() => write(": ping\n\n"), KEEPALIVE_MS);
 
       try {
-        const outcome = await runAiEdit(cfg, parsed.value, {
+        // 選ばれたモデル(lib/aiModels で確かめ済み)。選ばれていなければ既定(AI_MODEL)
+        const model = parsed.value.model ?? cfg.model;
+        const outcome = await runAiEdit({ ...cfg, model }, parsed.value, {
           onText: (text) => send({ type: "text", text }),
           signal: abort.signal,
         });

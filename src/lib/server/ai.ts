@@ -1,7 +1,7 @@
 import { AnthropicBedrockMantle } from "@anthropic-ai/bedrock-sdk";
 import { BedrockRuntimeClient, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import { betaRefusalFallbackMiddleware, BetaFallbackState, type Anthropic } from "@anthropic-ai/sdk";
-import type { AiEditEvent, AiEditRequest } from "../aiEdit";
+import type { AiEditEvent, AiUsage, ValidAiEditRequest } from "../aiEdit";
 import { sourceErrors } from "../submission";
 
 // AI と作る の推論は Amazon Bedrock で行う。認証は Lambda の実行ロール(SigV4)なので API キーは持たない。
@@ -71,7 +71,7 @@ export const PROPOSE_SHADER_TOOL = {
   },
 } satisfies Anthropic.Beta.BetaTool;
 
-export function buildUserMessage({ source, prompt, history }: Required<AiEditRequest>): string {
+export function buildUserMessage({ source, prompt, history }: Pick<ValidAiEditRequest, "source" | "prompt" | "history">): string {
   const parts: string[] = [];
   if (history.length > 0) {
     parts.push(
@@ -97,7 +97,7 @@ export interface AiEditOutcome {
 /** 依頼を 1 回投げる。返答文は届くたびに onText に渡す。止めたいときは signal を abort する */
 export function runAiEdit(
   cfg: AiConfig,
-  request: Required<AiEditRequest>,
+  request: ValidAiEditRequest,
   { onText, signal }: { onText: (text: string) => void; signal: AbortSignal },
 ): Promise<AiEditOutcome> {
   return isClaudeModel(cfg.model) ? runClaude(cfg, request, onText, signal) : runConverse(cfg, request, onText, signal);
@@ -119,7 +119,7 @@ function mantleClient(cfg: AiConfig): AnthropicBedrockMantle {
 
 async function runClaude(
   cfg: AiConfig,
-  request: Required<AiEditRequest>,
+  request: ValidAiEditRequest,
   onText: (text: string) => void,
   signal: AbortSignal,
 ): Promise<AiEditOutcome> {
@@ -139,7 +139,13 @@ async function runClaude(
   );
   stream.on("text", onText);
   const message = await stream.finalMessage();
-  return { event: toFinalEvent(message), model: message.model, stopReason: message.stop_reason, usage: message.usage };
+  const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens };
+  return {
+    event: withUsage(toFinalEvent(message), message.model, usage),
+    model: message.model,
+    stopReason: message.stop_reason,
+    usage: message.usage,
+  };
 }
 
 /** Claude の完成した応答を、ブラウザに送る done(または error)イベントにする */
@@ -166,7 +172,7 @@ let cachedRuntime: BedrockRuntimeClient | undefined;
 
 async function runConverse(
   cfg: AiConfig,
-  request: Required<AiEditRequest>,
+  request: ValidAiEditRequest,
   onText: (text: string) => void,
   signal: AbortSignal,
 ): Promise<AiEditOutcome> {
@@ -184,7 +190,7 @@ async function runConverse(
   let text = "";
   let sent = 0;
   let stopReason: string | null = null;
-  let usage: unknown = null;
+  let usage: { inputTokens?: number; outputTokens?: number } | null = null;
   for await (const event of response.stream ?? []) {
     // 考えている途中(reasoningContent)は表示しない
     const delta = event.contentBlockDelta?.delta?.text;
@@ -198,7 +204,7 @@ async function runConverse(
       }
     }
     if (event.messageStop) stopReason = event.messageStop.stopReason ?? null;
-    if (event.metadata) usage = event.metadata.usage;
+    if (event.metadata) usage = event.metadata.usage ?? null;
   }
 
   if (stopReason === "max_tokens") return { event: TRUNCATED, model: cfg.model, stopReason, usage };
@@ -207,7 +213,8 @@ async function runConverse(
     return { event, model: cfg.model, stopReason, usage };
   }
   const { reply, source } = parseCodeBlockReply(text);
-  return { event: doneEvent(reply, source), model: cfg.model, stopReason, usage };
+  const tokens = usage && { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 };
+  return { event: withUsage(doneEvent(reply, source), cfg.model, tokens), model: cfg.model, stopReason, usage };
 }
 
 const FENCE = "```";
@@ -235,6 +242,12 @@ const TRUNCATED: AiEditEvent = {
   type: "error",
   message: "返答が長くなりすぎて途中で切れました。依頼を小さく分けてお試しください",
 };
+
+/** done イベントに、答えたモデルと使ったトークンの数を添える(パネルでやりとりごとに出す) */
+function withUsage(event: AiEditEvent, model: string, usage: AiUsage | null): AiEditEvent {
+  if (event.type !== "done") return event;
+  return usage ? { ...event, model, usage } : { ...event, model };
+}
 
 function doneEvent(reply: string, source: string | null): AiEditEvent {
   return { type: "done", reply, source, errors: source === null ? [] : sourceErrors(source) };

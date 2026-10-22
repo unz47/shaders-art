@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from "msw";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
+import { DEFAULT_AI_MODEL_ID } from "@/lib/aiModels";
 import { sourceErrors } from "@/lib/submission";
 
 // POST /api/ai/edit
@@ -10,7 +11,7 @@ export const aiEdit = http.post("/api/ai/edit", async ({ request }) => {
   if (!parsed.ok) {
     return HttpResponse.json({ message: "依頼の内容に問題があります", errors: parsed.errors }, { status: 400 });
   }
-  const { source, prompt } = parsed.value;
+  const { source, prompt, model } = parsed.value;
   const question = /解説|説明|教えて/.test(prompt);
   const proposed = question ? null : `// ${prompt.replace(/\s+/g, " ")}\n${source}`;
   const reply = question
@@ -26,7 +27,14 @@ export const aiEdit = http.post("/api/ai/edit", async ({ request }) => {
         send({ type: "text", text: reply.slice(i, i + 4) });
         await delay(40);
       }
-      send({ type: "done", reply, source: proposed, errors: proposed === null ? [] : sourceErrors(proposed) });
+      send({
+        type: "done",
+        reply,
+        source: proposed,
+        errors: proposed === null ? [] : sourceErrors(proposed),
+        model: model ?? DEFAULT_AI_MODEL_ID,
+        usage: { inputTokens: 700 + source.length, outputTokens: 400 },
+      });
       controller.close();
     },
   });
