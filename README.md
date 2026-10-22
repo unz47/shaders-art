@@ -62,6 +62,19 @@ Claude のときだけ、安全性の判定で断られたときの切り替え�
 Devstral 2、Kimi K2.5)からモデルを選べる。サーバーは一覧に無いモデルを受け付けず、選ばれていなければ `AI_MODEL` を使う。
 一覧に足すときは、東京で呼べること(`aws bedrock get-foundation-model-availability`)と、コードブロックで答えられることを確かめる。
 
+Claude(Haiku 5.5 / Sonnet 5.5 / Opus 5.5)は、Bedrock ではなく **Claude Platform on AWS**(Anthropic が運営し、請求は AWS)で呼ぶ
+(このアカウントでは Bedrock の Claude が使えないため)。API キーは持たず、Bedrock と同じく AWS の認証情報(SigV4)で呼ぶ。
+ワークスペース ID を設定するまでは、パネルのメニューに Claude は出ない(`GET /api/ai/models`)。使えるようにするには:
+
+1. AWS コンソールの「Claude Platform on AWS」で Sign up する(AWS Marketplace の同意)。Anthropic の組織を作る
+2. 東京(ap-northeast-1)にワークスペースを作り、ID(`wrkspc_…`)を控える。使いすぎないよう、ワークスペースの上限額も決めておく
+3. アカウントで一度だけ `aws iam enable-outbound-web-identity-federation` を実行する
+4. ローカル: `.env.local` に `ANTHROPIC_AWS_WORKSPACE_ID=wrkspc_…` を足して `pnpm dev` を起動し直す
+5. 本番: `pnpm cdk deploy --all -c claudeWorkspaceId=wrkspc_…`(Lambda の環境変数と、そのワークスペースでの
+   `aws-external-anthropic:CreateInference` の権限が付く)
+
+推論が動く場所は日本に固定されない(既定は世界のどこか。リクエストごとに `inference_geo` で `us` にはできる)。
+
 `AI_MODEL` が無いときは「AI はまだ設定されていません」と返る。`NEXT_PUBLIC_API_MOCK=1` なら AI もモック
 (依頼文をコメントとして足すだけの提案)になる。
 

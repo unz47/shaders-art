@@ -1,6 +1,7 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import {
+  availableModels,
   buildUserMessage,
   getAiConfig,
   isClaudeModel,
@@ -28,7 +29,20 @@ describe("getAiConfig", () => {
     expect(getAiConfig({ AI_MODEL: "anthropic.claude-opus-5-5" })).toEqual({
       model: "anthropic.claude-opus-5-5",
       fallbackModel: null,
+      claudeWorkspaceId: null,
     });
+  });
+});
+
+describe("availableModels", () => {
+  const ids = (env: Record<string, string>) => availableModels(getAiConfig(env)!).map((m) => m.id);
+
+  it("Claude は Claude Platform on AWS のワークスペースが設定されているときだけ選べる", () => {
+    expect(ids({ AI_MODEL: "qwen.qwen3-coder-480b-a35b-v1:0" })).not.toContain("claude-sonnet-5-5");
+    expect(
+      ids({ AI_MODEL: "qwen.qwen3-coder-480b-a35b-v1:0", ANTHROPIC_AWS_WORKSPACE_ID: "wrkspc_test" }),
+    ).toContain("claude-sonnet-5-5");
+    expect(ids({ AI_MODEL: "qwen.qwen3-coder-480b-a35b-v1:0" })).toContain("qwen.qwen3-coder-30b-a3b-v1:0");
   });
 });
 

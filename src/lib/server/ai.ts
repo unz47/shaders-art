@@ -1,29 +1,49 @@
+import AnthropicAws from "@anthropic-ai/aws-sdk";
 import { AnthropicBedrockMantle } from "@anthropic-ai/bedrock-sdk";
 import { BedrockRuntimeClient, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import { betaRefusalFallbackMiddleware, BetaFallbackState, type Anthropic } from "@anthropic-ai/sdk";
 import type { AiEditEvent, AiUsage, ValidAiEditRequest } from "../aiEdit";
+import { AI_MODELS, type AiModel, findAiModel } from "../aiModels";
 import { sourceErrors } from "../submission";
 
 // AI と作る の推論は Amazon Bedrock で行う。認証は Lambda の実行ロール(SigV4)なので API キーは持たない。
 // リージョンは AWS_REGION。モデルによって呼び方が違う:
-//   - Claude(anthropic.*)… Messages API(bedrock-mantle)。コードは propose_shader ツールの入力で受け取る
+//   - Claude(lib/aiModels の via: "claude")… Claude Platform on AWS の Messages API。Anthropic が運営し、
+//     請求は AWS。Lambda の実行ロール(SigV4)で呼ぶ。コードは propose_shader ツールの入力で受け取る
+//   - Claude(anthropic.* の ID)… Bedrock の Messages API(bedrock-mantle)。同じくツールで受け取る
 //     (Bedrock は構造化出力に対応していないため)
-//   - それ以外(Qwen など)… Converse API(bedrock-runtime)。ツールの対応がモデルごとに違うので、
+//   - それ以外(Qwen など)… Bedrock の Converse API(bedrock-runtime)。ツールの対応がモデルごとに違うので、
 //     コードは返答中の ```glsl ブロックで受け取る
-// このアカウントでは Bedrock の Claude が使えない制限があるため、いまは Qwen3 Coder で動かしている。
+// このアカウントでは Bedrock の Claude が使えない制限があるため、Claude は Claude Platform on AWS で呼ぶ。
 
 export interface AiConfig {
   /** Bedrock のモデル ID(例: qwen.qwen3-coder-480b-a35b-v1:0、anthropic.claude-opus-4-8) */
   model: string;
-  /** Claude が安全性の判定で断ったときに切り替えるモデル。未設定なら切り替えない */
+  /** Claude が安全性の判定で断ったときに切り替えるモデル(Bedrock の Claude だけ)。未設定なら切り替えない */
   fallbackModel: string | null;
+  /** Claude Platform on AWS のワークスペース ID(wrkspc_…)。未設定なら Claude は選べない */
+  claudeWorkspaceId: string | null;
 }
 
 /** 環境変数はリクエストのたびに読む(理由は oauth.ts の getAuthConfig と同じ)。未設定なら null */
 export function getAiConfig(env: Record<string, string | undefined> = process.env): AiConfig | null {
   const model = env.AI_MODEL;
   if (!model) return null;
-  return { model, fallbackModel: env.AI_FALLBACK_MODEL || null };
+  return {
+    model,
+    fallbackModel: env.AI_FALLBACK_MODEL || null,
+    claudeWorkspaceId: env.ANTHROPIC_AWS_WORKSPACE_ID || null,
+  };
+}
+
+/** 利用者が選べるモデル。Claude は Claude Platform on AWS のワークスペースが設定されているときだけ */
+export function availableModels(cfg: AiConfig): AiModel[] {
+  return AI_MODELS.filter((model) => model.via === "bedrock" || cfg.claudeWorkspaceId !== null);
+}
+
+/** Messages API(propose_shader ツール)で呼ぶモデルか */
+function usesMessagesApi(model: string): boolean {
+  return isClaudeModel(model) || findAiModel(model)?.via === "claude";
 }
 
 export function isClaudeModel(model: string): boolean {
@@ -100,10 +120,10 @@ export function runAiEdit(
   request: ValidAiEditRequest,
   { onText, signal }: { onText: (text: string) => void; signal: AbortSignal },
 ): Promise<AiEditOutcome> {
-  return isClaudeModel(cfg.model) ? runClaude(cfg, request, onText, signal) : runConverse(cfg, request, onText, signal);
+  return usesMessagesApi(cfg.model) ? runClaude(cfg, request, onText, signal) : runConverse(cfg, request, onText, signal);
 }
 
-// ---- Claude(bedrock-mantle の Messages API)----
+// ---- Claude(Messages API。Claude Platform on AWS か bedrock-mantle)----
 
 // 認証情報の解決をやり直さないよう、Lambda のインスタンス内で使い回す
 let cachedMantle: { fallbackModel: string | null; client: AnthropicBedrockMantle } | undefined;
@@ -117,26 +137,39 @@ function mantleClient(cfg: AiConfig): AnthropicBedrockMantle {
   return cachedMantle.client;
 }
 
+// Claude Platform on AWS。リージョンは AWS_REGION(ワークスペースは同じリージョンに作っておく)
+let cachedPlatform: { workspaceId: string; client: AnthropicAws } | undefined;
+
+function platformClient(workspaceId: string): AnthropicAws {
+  if (cachedPlatform?.workspaceId !== workspaceId) {
+    cachedPlatform = { workspaceId, client: new AnthropicAws({ workspaceId }) };
+  }
+  return cachedPlatform.client;
+}
+
 async function runClaude(
   cfg: AiConfig,
   request: ValidAiEditRequest,
   onText: (text: string) => void,
   signal: AbortSignal,
 ): Promise<AiEditOutcome> {
-  const stream = mantleClient(cfg).beta.messages.stream(
-    {
-      model: cfg.model,
-      max_tokens: MAX_TOKENS,
-      // Opus 4.8 は指定しないと考えずに答えるので、明示する(5 系では指定しなくても同じ)
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
-      system: SYSTEM_PROMPT,
-      tools: [PROPOSE_SHADER_TOOL],
-      messages: [{ role: "user", content: buildUserMessage(request) }],
-    },
-    // 断られたときの切り替え先はこの 1 回の依頼の中でだけ覚えておく
-    { fallbackState: new BetaFallbackState(), signal },
-  );
+  const params = {
+    model: cfg.model,
+    max_tokens: MAX_TOKENS,
+    // Opus 4.8 は指定しないと考えずに答えるので、明示する(5 系では指定しなくても同じ)
+    thinking: { type: "adaptive" },
+    // 待たせすぎないよう、考える量はほどほどにする(Sonnet 5.5 は指定しないと high)
+    output_config: { effort: "medium" },
+    system: SYSTEM_PROMPT,
+    tools: [PROPOSE_SHADER_TOOL],
+    messages: [{ role: "user", content: buildUserMessage(request) }],
+  } satisfies Anthropic.Beta.MessageCreateParamsNonStreaming;
+  const onPlatform = findAiModel(cfg.model)?.via === "claude";
+  if (onPlatform && !cfg.claudeWorkspaceId) throw new Error("Claude Platform on AWS のワークスペースが設定されていません");
+  const stream = onPlatform
+    ? platformClient(cfg.claudeWorkspaceId as string).beta.messages.stream(params, { signal })
+    : // 断られたときの切り替え先はこの 1 回の依頼の中でだけ覚えておく
+      mantleClient(cfg).beta.messages.stream(params, { fallbackState: new BetaFallbackState(), signal });
   stream.on("text", onText);
   const message = await stream.finalMessage();
   const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens };

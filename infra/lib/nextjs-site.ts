@@ -18,6 +18,8 @@ export interface NextjsSiteProps {
   auth: Auth;
   /** 本番サイトのオリジン。決まっていれば OAuth の redirect_uri に使う(Auth の siteUrl と同じ値) */
   siteUrl?: string;
+  /** Claude Platform on AWS のワークスペース ID(wrkspc_…、東京に作ったもの)。無ければ Claude は選べない */
+  claudeWorkspaceId?: string;
 }
 
 // AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
@@ -36,7 +38,7 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId } = props;
 
     const dirname = path.dirname(fileURLToPath(import.meta.url));
     this.nextjs = new Nextjs(this, "Nextjs", {
@@ -64,6 +66,7 @@ export class NextjsSite extends Construct {
         COGNITO_DOMAIN: auth.domainUrl,
         ...(siteUrl ? { SITE_URL: siteUrl } : {}),
         AI_MODEL,
+        ...(claudeWorkspaceId ? { ANTHROPIC_AWS_WORKSPACE_ID: claudeWorkspaceId } : {}),
       },
       overrides: {
         nextjsServer: {
@@ -103,14 +106,24 @@ export class NextjsSite extends Construct {
       fn.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-mantle:CreateInference"], resources: ["*"] }));
     }
     // 利用者が選べるモデル(と既定のモデル)だけを呼べるようにする
-    const converseModels = [...new Set([AI_MODEL, ...AI_MODELS.map((model) => model.id)])].filter(
-      (id) => !id.startsWith("anthropic."),
-    );
+    const converseModels = [
+      ...new Set([AI_MODEL, ...AI_MODELS.filter((model) => model.via === "bedrock").map((model) => model.id)]),
+    ].filter((id) => !id.startsWith("anthropic."));
     fn.addToRolePolicy(
       new PolicyStatement({
         actions: ["bedrock:InvokeModelWithResponseStream"],
         resources: converseModels.map((id) => `arn:aws:bedrock:${Stack.of(this).region}::foundation-model/${id}`),
       }),
     );
+    // Claude(Claude Platform on AWS)は、設定したワークスペースでの推論だけを許す
+    if (claudeWorkspaceId) {
+      const { region, account } = Stack.of(this);
+      fn.addToRolePolicy(
+        new PolicyStatement({
+          actions: ["aws-external-anthropic:CreateInference"],
+          resources: [`arn:aws:aws-external-anthropic:${region}:${account}:workspace/${claudeWorkspaceId}`],
+        }),
+      );
+    }
   }
 }

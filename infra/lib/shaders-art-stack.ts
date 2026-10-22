@@ -22,10 +22,18 @@ export class ShadersArtStack extends Stack {
 
     // 本番のオリジン。cdk.json の context "siteUrl"(理由は auth.ts の AuthProps.siteUrl)
     const siteUrl = parseSiteUrl(this.node.tryGetContext("siteUrl"));
+    // Claude Platform on AWS のワークスペース ID。cdk.json の context "claudeWorkspaceId"(無ければ Claude は選べない)
+    const claudeWorkspaceId = parseWorkspaceId(this.node.tryGetContext("claudeWorkspaceId"));
 
     const { table } = new WorksTable(this, "WorksTable");
     const auth = new Auth(this, "Auth", { siteUrl });
-    const { nextjs } = new NextjsSite(this, "Site", { table, webAclArn: props.webAclArn, auth, siteUrl });
+    const { nextjs } = new NextjsSite(this, "Site", {
+      table,
+      webAclArn: props.webAclArn,
+      auth,
+      siteUrl,
+      claudeWorkspaceId,
+    });
 
     new CfnOutput(this, "SiteUrl", { value: nextjs.url });
     new CfnOutput(this, "TableName", { value: table.tableName });
@@ -39,6 +47,14 @@ function parseSiteUrl(value: unknown): string | undefined {
   if (value === undefined || value === "") return undefined;
   if (typeof value !== "string" || !/^https:\/\/[^/]+$/.test(value)) {
     throw new Error(`context "siteUrl" は "https://<host>" の形で、末尾スラッシュ無しで指定してください: ${String(value)}`);
+  }
+  return value;
+}
+
+function parseWorkspaceId(value: unknown): string | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (typeof value !== "string" || !/^wrkspc_[A-Za-z0-9]+$/.test(value)) {
+    throw new Error(`context "claudeWorkspaceId" は "wrkspc_…" の形で指定してください: ${String(value)}`);
   }
   return value;
 }
