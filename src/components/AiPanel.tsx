@@ -13,7 +13,10 @@ import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
 // 仕様: Figma "Shader / Desktop 1440 — Community + AI"(node 83:443)> AI Composer
 // /edit の左下に置く AI パネル。依頼を送ると返答が流れてきて、コードの提案があれば親に渡す
 // (エディタの差分表示とプレビューの切り替えは親が持つ)。適用・却下もここから親に伝える。
-// 高さはコード欄の 45% まで。超えたら会話だけがスクロールし、見出しと入力欄は動かない。
+// 高さは既定では中身に合わせて左の欄の 45% まで。上の境界(親の SplitHandle)をドラッグすると、その高さに固定する。
+// どちらでも、収まらない分は会話だけがスクロールし、見出しと入力欄は動かない。
+// 見出しの右のボタンで閉じられる(閉じている間は、親が左下に開くボタンを浮かべる)。
+// 隠すだけなので、閉じても会話や返答中の依頼はそのまま残る。
 // 送信ボタンの左でモデルを選べる(lib/aiModels)。選んだモデルはこのブラウザに覚えておく。
 // メニューに出すのは、サーバーでいま使えるモデルだけ(Claude の 5 系は Claude Platform on AWS の設定が済んでから)。
 // 返答の下に、答えたモデルと使ったトークンの数を出す。
@@ -75,20 +78,31 @@ let availableModels: Promise<string[] | null> | null = null;
 /** loading: ログイン状態の確認中 / login: ログインが必要 / ready: 使える */
 export type AiAccess = "loading" | "login" | "ready";
 
+/** 高さを固定するときの最小。見出しと入力欄と、会話の 1 行が収まる高さ(まだ何も頼んでいないときの高さと同じ) */
+export const AI_PANEL_MIN_HEIGHT_PX = 188;
+
 export function AiPanel({
+  open,
+  onClose,
   baseSource,
   pendingTurnId,
   access,
+  heightRatio,
   onLogin,
   onPropose,
   onApply,
   onReject,
 }: {
+  /** false なら隠す */
+  open: boolean;
+  onClose: () => void;
   /** 依頼の土台にするコード(未適用の提案があればその提案。続けて頼むと提案の上に重ねる) */
   baseSource: string;
   /** 未適用の提案を出しているやりとり。無ければ null */
   pendingTurnId: number | null;
   access: AiAccess;
+  /** 高さ(左の欄に対する割合)。null なら中身に合わせて 45% まで */
+  heightRatio: number | null;
   onLogin: () => void;
   onPropose: (turnId: number, source: string) => void;
   onApply: () => void;
@@ -115,6 +129,14 @@ export function AiPanel({
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const wasOpen = useRef(open);
+
+  // 閉じていた欄が開いたら、依頼の入力欄にフォーカスする(開くボタンは押すと消えるので)
+  useEffect(() => {
+    if (open && !wasOpen.current) promptRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   const busy = turns.some((t) => t.status === "streaming");
 
   // 返答が流れてくるたびに最新のやりとりまでスクロールする
@@ -188,14 +210,30 @@ export function AiPanel({
   }
 
   return (
+    // 上の線は親の境界(SplitHandle)が引く
     <section
       aria-label="AI と作る"
-      className="flex max-h-[45%] shrink-0 flex-col gap-3 border-t border-border-subtle bg-bg-surface px-6 pb-4 pt-3"
+      className={`${open ? "flex" : "hidden"} shrink-0 flex-col gap-3 bg-bg-surface px-6 pb-4 pt-3 ${heightRatio === null ? "max-h-[45%]" : ""}`}
+      style={
+        heightRatio === null ? undefined : { height: `${heightRatio * 100}%`, minHeight: AI_PANEL_MIN_HEIGHT_PX }
+      }
     >
       <div className="flex items-center gap-2">
         <SparkleIcon className="size-4 text-accent-default" />
         <h2 className="text-sm font-medium text-text-primary">AI と作る</h2>
         <Badge variant="accent">Beta</Badge>
+        <div className="flex-1" />
+        {/* 行の高さを変えないよう、ボタンの上下の余白を打ち消す */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-my-1.5 -mr-2 px-sp-xs"
+          aria-label="AI 欄を閉じる"
+          title="AI 欄を閉じる"
+          onClick={onClose}
+        >
+          <ChevronDownIcon />
+        </Button>
       </div>
 
       <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -231,6 +269,7 @@ export function AiPanel({
           }}
         >
           <textarea
+            ref={promptRef}
             aria-label="AI への依頼"
             rows={2}
             maxLength={AI_PROMPT_MAX}
@@ -289,6 +328,15 @@ export function AiPanel({
         </form>
       )}
     </section>
+  );
+}
+
+/** 下向きの山形(AI 欄をしまう) */
+function ChevronDownIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="size-4">
+      <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

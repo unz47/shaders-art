@@ -9,6 +9,8 @@ const LINKED_DESIGN_SYSTEM = true;
 const nextConfig: NextConfig = {
   // OpenNext(Lambda)がこの形式のビルド出力を前提にしている
   output: "standalone",
+  // 開発中だけ出る Next.js の表示。既定の左下は /edit の AI 欄の開くボタン(FAB)とモデル選択に重なるので右下にする
+  devIndicators: { position: "bottom-right" },
   // @frost-ui/react は TS ソース配布なので消費側でトランスパイルする
   transpilePackages: ["@frost-ui/react"],
   ...(LINKED_DESIGN_SYSTEM ? { turbopack: { root: path.resolve(__dirname, "..") } } : {}),
