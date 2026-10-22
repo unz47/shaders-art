@@ -1,10 +1,12 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
 import { SparkleIcon } from "@/components/SparkleIcon";
-import { AI_PROMPT_MAX, requestAiEdit, type AiTurnSummary } from "@/lib/aiEdit";
+import { AI_PROMPT_MAX, requestAiEdit, type AiTurnSummary, type AiUsage } from "@/lib/aiEdit";
+import { AI_MODELS, DEFAULT_AI_MODEL_ID, findAiModel, priceTier } from "@/lib/aiModels";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
 
@@ -12,6 +14,8 @@ import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
 // /edit の左下に置く AI パネル。依頼を送ると返答が流れてきて、コードの提案があれば親に渡す
 // (エディタの差分表示とプレビューの切り替えは親が持つ)。適用・却下もここから親に伝える。
 // 高さはコード欄の 45% まで。超えたら会話だけがスクロールし、見出しと入力欄は動かない。
+// 送信ボタンの左でモデルを選べる(lib/aiModels)。選んだモデルはこのブラウザに覚えておく。
+// 返答の下に、答えたモデルと使ったトークンの数を出す。
 
 type Turn = {
   id: number;
@@ -25,7 +29,44 @@ type Turn = {
   /** 依頼したときの土台との差分の行数 */
   stats: { added: number; removed: number } | null;
   applied: boolean;
+  /** 答えたモデルと使ったトークンの数(わかれば) */
+  model: string | null;
+  usage: AiUsage | null;
 };
+
+const MODEL_KEY = "shaders-art:ai-model";
+const modelListeners = new Set<() => void>();
+
+function subscribeModel(listener: () => void): () => void {
+  modelListeners.add(listener);
+  // ほかのタブで選び直したときも合わせる
+  window.addEventListener("storage", listener);
+  return () => {
+    modelListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function readModel(): string {
+  try {
+    const stored = localStorage.getItem(MODEL_KEY);
+    // 一覧から外れたモデルを覚えていたら、既定に戻す
+    return findAiModel(stored) ? (stored as string) : DEFAULT_AI_MODEL_ID;
+  } catch {
+    return DEFAULT_AI_MODEL_ID;
+  }
+}
+
+function writeModel(id: string) {
+  try {
+    localStorage.setItem(MODEL_KEY, id);
+  } catch {
+    // プライベートブラウジングなどで覚えられなくても、選び直し自体はできるようにする
+  }
+  for (const listener of modelListeners) listener();
+}
+
+const MODEL_LABELS = Object.fromEntries(AI_MODELS.map((model) => [model.id, model.label]));
 
 /** loading: ログイン状態の確認中 / login: ログインが必要 / ready: 使える */
 export type AiAccess = "loading" | "login" | "ready";
@@ -51,6 +92,7 @@ export function AiPanel({
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
+  const model = useSyncExternalStore(subscribeModel, readModel, () => DEFAULT_AI_MODEL_ID);
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -79,7 +121,7 @@ export function AiPanel({
       .map((t) => ({ prompt: t.prompt, reply: t.reply }));
     setTurns((ts) => [
       ...ts,
-      { id, prompt, status: "streaming", reply: "", source: null, errors: [], stats: null, applied: false },
+      { id, prompt, status: "streaming", reply: "", source: null, errors: [], stats: null, applied: false, model, usage: null },
     ]);
     setDraft("");
 
@@ -87,7 +129,7 @@ export function AiPanel({
     abortRef.current = controller;
     try {
       const result = await requestAiEdit(
-        { source: base, prompt, history },
+        { source: base, prompt, history, model },
         { signal: controller.signal, onText: (text) => updateTurn(id, (t) => ({ reply: t.reply + text })) },
       );
       if (!result.ok) {
@@ -102,6 +144,8 @@ export function AiPanel({
         source,
         errors: source === null ? [] : result.errors,
         stats: source === null ? null : diffStats(diffLines(base, source)),
+        model: result.model ?? model,
+        usage: result.usage,
       }));
       if (source !== null) onPropose(id, source);
     } catch {
@@ -180,7 +224,32 @@ export function AiPanel({
             }
             className="resize-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
           />
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-2">
+            <Select items={MODEL_LABELS} value={model} onValueChange={(value) => value && writeModel(value)} disabled={busy}>
+              <SelectTrigger
+                aria-label="AI のモデル"
+                className="h-7 w-auto gap-1 border-transparent bg-transparent px-1.5 text-xs text-text-secondary hover:text-text-primary"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    <span className="flex flex-col gap-0.5 py-0.5">
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-sm text-text-primary">{m.label}</span>
+                        <span className="font-mono text-[11px] text-text-muted" title="料金の目安">
+                          {"$".repeat(priceTier(m))}
+                        </span>
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        {m.maker} · {m.note}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {busy ? (
               <Button type="button" variant="ghost" size="sm" onClick={() => abortRef.current?.abort()}>
                 停止
@@ -231,6 +300,12 @@ function TurnView({
             {turn.reply || (turn.status === "streaming" ? "考えています…" : "")}
           </p>
         </div>
+        {turn.status === "done" && turn.model && (
+          <p className="pl-6 font-mono text-[11px] text-text-muted">
+            {findAiModel(turn.model)?.label ?? turn.model}
+            {turn.usage && ` · ${(turn.usage.inputTokens + turn.usage.outputTokens).toLocaleString()} トークン`}
+          </p>
+        )}
         {turn.source !== null && turn.stats && (
           <>
             <ul className="flex flex-wrap gap-x-3 gap-y-1 pl-6 font-mono text-[11px]">
