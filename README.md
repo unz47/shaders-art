@@ -55,12 +55,30 @@ AI_MODEL=qwen.qwen3-coder-480b-a35b-v1:0
 `AI_MODEL` が `anthropic.` で始まれば Claude を Messages API(bedrock-mantle、権限は `bedrock-mantle:CreateInference`)で、
 それ以外は Converse API(権限は `bedrock:InvokeModelWithResponseStream`)で呼ぶ(`src/lib/server/ai.ts`)。
 Claude のときだけ、安全性の判定で断られたときの切り替え先を `AI_FALLBACK_MODEL` で指定できる。
-このアカウントでは Bedrock の Claude が「is not available for this account」(403)で使えない(AWS サポートに解除を依頼する)。
-使えるようになっても、東京のマントルにある Claude は Opus 4.8 / 4.7 / Haiku 4.5 まで(Opus 5.5 などは us-east-1 にしか無い)。
+このアカウントでは bedrock-mantle の Claude がどれも「is not available for this account」(403)で使えない
+(AWS サポートに解除を依頼する。利用目的の申請は済んでいる)。東京の bedrock-mantle には Sonnet 4.6 と 5 系が無い(404)。
 
 利用者はパネルの送信ボタンの左で、`src/lib/aiModels.ts` の一覧(Qwen3 Coder 480B / 30B、gpt-oss-120b、MiniMax M2.5、
-Devstral 2、Kimi K2.5)からモデルを選べる。サーバーは一覧に無いモデルを受け付けず、選ばれていなければ `AI_MODEL` を使う。
-一覧に足すときは、東京で呼べること(`aws bedrock get-foundation-model-availability`)と、コードブロックで答えられることを確かめる。
+Devstral 2、Kimi K2.5、Claude Sonnet 4.6 / Haiku 4.5)からモデルを選べる。サーバーは一覧に無いモデルを受け付けず、
+選ばれていなければ `AI_MODEL` を使う。一覧に足すときは、東京で呼べること(`aws bedrock get-foundation-model-availability`)と、
+コードブロックで答えられることを確かめる。
+
+Claude Sonnet 4.6 / Haiku 4.5 は、Bedrock の InvokeModel(bedrock-runtime)に Messages API の形で送る(`AnthropicBedrock`)。
+日本国内で処理する推論プロファイル(`jp.anthropic.…`)を通すので、権限はプロファイルと、行き先(東京・大阪)の基盤モデルに付ける。
+このアカウントの Bedrock で通る Claude はこの 2 つだけで、Opus と 5 系は 403 になる(Converse でも同じ)。
+
+Claude(Haiku 5.5 / Sonnet 5.5 / Opus 5.5)は、Bedrock ではなく **Claude Platform on AWS**(Anthropic が運営し、請求は AWS)で呼ぶ
+(このアカウントの Bedrock では 5 系が使えないため)。API キーは持たず、Bedrock と同じく AWS の認証情報(SigV4)で呼ぶ。
+ワークスペース ID を設定するまでは、パネルのメニューにこの 3 つは出ない(`GET /api/ai/models`)。使えるようにするには:
+
+1. AWS コンソールの「Claude Platform on AWS」で Sign up する(AWS Marketplace の同意)。Anthropic の組織を作る
+2. 東京(ap-northeast-1)にワークスペースを作り、ID(`wrkspc_…`)を控える。使いすぎないよう、ワークスペースの上限額も決めておく
+3. アカウントで一度だけ `aws iam enable-outbound-web-identity-federation` を実行する
+4. ローカル: `.env.local` に `ANTHROPIC_AWS_WORKSPACE_ID=wrkspc_…` を足して `pnpm dev` を起動し直す
+5. 本番: `pnpm cdk deploy --all -c claudeWorkspaceId=wrkspc_…`(Lambda の環境変数と、そのワークスペースでの
+   `aws-external-anthropic:CreateInference` の権限が付く)
+
+推論が動く場所は日本に固定されない(既定は世界のどこか。リクエストごとに `inference_geo` で `us` にはできる)。
 
 `AI_MODEL` が無いときは「AI はまだ設定されていません」と返る。`NEXT_PUBLIC_API_MOCK=1` なら AI もモック
 (依頼文をコメントとして足すだけの提案)になる。

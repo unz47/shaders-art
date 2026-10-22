@@ -5,7 +5,7 @@ import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
 import { SparkleIcon } from "@/components/SparkleIcon";
-import { AI_PROMPT_MAX, requestAiEdit, type AiTurnSummary, type AiUsage } from "@/lib/aiEdit";
+import { AI_PROMPT_MAX, getAvailableAiModels, requestAiEdit, type AiTurnSummary, type AiUsage } from "@/lib/aiEdit";
 import { AI_MODELS, DEFAULT_AI_MODEL_ID, findAiModel, priceTier } from "@/lib/aiModels";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
@@ -15,6 +15,7 @@ import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
 // (エディタの差分表示とプレビューの切り替えは親が持つ)。適用・却下もここから親に伝える。
 // 高さはコード欄の 45% まで。超えたら会話だけがスクロールし、見出しと入力欄は動かない。
 // 送信ボタンの左でモデルを選べる(lib/aiModels)。選んだモデルはこのブラウザに覚えておく。
+// メニューに出すのは、サーバーでいま使えるモデルだけ(Claude の 5 系は Claude Platform on AWS の設定が済んでから)。
 // 返答の下に、答えたモデルと使ったトークンの数を出す。
 
 type Turn = {
@@ -68,6 +69,9 @@ function writeModel(id: string) {
 
 const MODEL_LABELS = Object.fromEntries(AI_MODELS.map((model) => [model.id, model.label]));
 
+// いま選べるモデル。ページの読み込みにつき 1 回だけ問い合わせる
+let availableModels: Promise<string[] | null> | null = null;
+
 /** loading: ログイン状態の確認中 / login: ログインが必要 / ready: 使える */
 export type AiAccess = "loading" | "login" | "ready";
 
@@ -92,7 +96,22 @@ export function AiPanel({
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
-  const model = useSyncExternalStore(subscribeModel, readModel, () => DEFAULT_AI_MODEL_ID);
+  const storedModel = useSyncExternalStore(subscribeModel, readModel, () => DEFAULT_AI_MODEL_ID);
+  // サーバーに聞くまでは(聞けなかったときも)Bedrock のモデル(Claude を含む)だけを出す
+  const [available, setAvailable] = useState<string[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    availableModels ??= getAvailableAiModels();
+    void availableModels.then((ids) => {
+      if (!cancelled) setAvailable(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const models = AI_MODELS.filter((m) => (available && available.length > 0 ? available.includes(m.id) : m.via !== "claude"));
+  // 覚えていたモデルが今は使えなければ、既定のモデルにする
+  const model = models.some((m) => m.id === storedModel) ? storedModel : DEFAULT_AI_MODEL_ID;
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -233,7 +252,7 @@ export function AiPanel({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {AI_MODELS.map((m) => (
+                {models.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     <span className="flex flex-col gap-0.5 py-0.5">
                       <span className="flex items-baseline gap-2">
