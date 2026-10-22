@@ -2,10 +2,11 @@
 // モック(MSW)で共有する。応答は Server-Sent Events で、返答文を少しずつ流してから最後に提案をまとめて送る。
 
 import { findAiModel } from "./aiModels";
+import { SIZE_BUDGET_BYTES } from "./submission";
 
 export const AI_PROMPT_MAX = 500;
-/** 編集途中のコードは投稿の上限(4 KB)を超えていることもあるので、余裕を持たせる */
-export const AI_SOURCE_MAX_BYTES = 16 * 1024;
+/** 編集途中のコードは投稿の上限を超えていることもあるので、その倍まで受け付ける */
+export const AI_SOURCE_MAX_BYTES = 2 * SIZE_BUDGET_BYTES;
 /** 続けて頼むときに文脈として送る、直近のやりとりの数 */
 export const AI_HISTORY_MAX = 6;
 const AI_REPLY_MAX = 1000;
