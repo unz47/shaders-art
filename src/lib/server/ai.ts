@@ -1,5 +1,5 @@
 import AnthropicAws from "@anthropic-ai/aws-sdk";
-import { AnthropicBedrockMantle } from "@anthropic-ai/bedrock-sdk";
+import { AnthropicBedrock, AnthropicBedrockMantle } from "@anthropic-ai/bedrock-sdk";
 import { BedrockRuntimeClient, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import { betaRefusalFallbackMiddleware, BetaFallbackState, type Anthropic } from "@anthropic-ai/sdk";
 import type { AiEditEvent, AiUsage, ValidAiEditRequest } from "../aiEdit";
@@ -10,11 +10,13 @@ import { sourceErrors } from "../submission";
 // リージョンは AWS_REGION。モデルによって呼び方が違う:
 //   - Claude(lib/aiModels の via: "claude")… Claude Platform on AWS の Messages API。Anthropic が運営し、
 //     請求は AWS。Lambda の実行ロール(SigV4)で呼ぶ。コードは propose_shader ツールの入力で受け取る
+//   - Claude(via: "bedrock-claude")… Bedrock の InvokeModel(bedrock-runtime)に Messages API の形で送る。
+//     同じくツールで受け取る(Bedrock は構造化出力に対応していないため)
 //   - Claude(anthropic.* の ID)… Bedrock の Messages API(bedrock-mantle)。同じくツールで受け取る
-//     (Bedrock は構造化出力に対応していないため)
 //   - それ以外(Qwen など)… Bedrock の Converse API(bedrock-runtime)。ツールの対応がモデルごとに違うので、
 //     コードは返答中の ```glsl ブロックで受け取る
-// このアカウントでは Bedrock の Claude が使えない制限があるため、Claude は Claude Platform on AWS で呼ぶ。
+// このアカウントでは bedrock-mantle の Claude がどれも 403 で、InvokeModel でも使えるのは Sonnet 4.6 と Haiku 4.5 だけ。
+// 5 系の Claude は Claude Platform on AWS で呼ぶ。
 
 export interface AiConfig {
   /** Bedrock のモデル ID(例: qwen.qwen3-coder-480b-a35b-v1:0、anthropic.claude-opus-4-8) */
@@ -36,18 +38,31 @@ export function getAiConfig(env: Record<string, string | undefined> = process.en
   };
 }
 
-/** 利用者が選べるモデル。Claude は Claude Platform on AWS のワークスペースが設定されているときだけ */
+/** 利用者が選べるモデル。Claude Platform on AWS のモデルは、ワークスペースが設定されているときだけ */
 export function availableModels(cfg: AiConfig): AiModel[] {
-  return AI_MODELS.filter((model) => model.via === "bedrock" || cfg.claudeWorkspaceId !== null);
+  return AI_MODELS.filter((model) => model.via !== "claude" || cfg.claudeWorkspaceId !== null);
 }
 
 /** Messages API(propose_shader ツール)で呼ぶモデルか */
 function usesMessagesApi(model: string): boolean {
-  return isClaudeModel(model) || findAiModel(model)?.via === "claude";
+  const via = findAiModel(model)?.via;
+  return isClaudeModel(model) || via === "claude" || via === "bedrock-claude";
 }
 
 export function isClaudeModel(model: string): boolean {
   return model.startsWith("anthropic.");
+}
+
+/** Messages API で送る考え方の指定。Haiku 4.5 は adaptive thinking も effort も受け付けない(400 になる)ので送らない */
+export function thinkingParams(model: string) {
+  if (model.includes("claude-haiku-4-5")) return {};
+  return {
+    // Opus 4.8 は指定しないと考えずに答えるので、明示する(5 系では指定しなくても同じ)
+    thinking: { type: "adaptive" },
+    // 待たせすぎないよう、考える量はほどほどにする(Sonnet 5.5 は指定しないと high)。
+    // Sonnet 4.6 は medium だと考えすぎることがある(16000 トークン考えて、答える前に切れた)ので low にする
+    output_config: { effort: model.includes("claude-sonnet-4-6") ? "low" : "medium" },
+  } as const;
 }
 
 const RULES = `あなたは shaders.art のシェーダー編集アシスタントです。利用者はブラウザのエディタで GLSL の作品を書いていて、あなたは依頼に応じてそのコードを書き換えます。
@@ -123,7 +138,7 @@ export function runAiEdit(
   return usesMessagesApi(cfg.model) ? runClaude(cfg, request, onText, signal) : runConverse(cfg, request, onText, signal);
 }
 
-// ---- Claude(Messages API。Claude Platform on AWS か bedrock-mantle)----
+// ---- Claude(Messages API。Claude Platform on AWS か、Bedrock の InvokeModel か bedrock-mantle)----
 
 // 認証情報の解決をやり直さないよう、Lambda のインスタンス内で使い回す
 let cachedMantle: { fallbackModel: string | null; client: AnthropicBedrockMantle } | undefined;
@@ -147,6 +162,9 @@ function platformClient(workspaceId: string): AnthropicAws {
   return cachedPlatform.client;
 }
 
+// Bedrock の InvokeModel。リージョンは AWS_REGION
+let cachedInvoke: AnthropicBedrock | undefined;
+
 async function runClaude(
   cfg: AiConfig,
   request: ValidAiEditRequest,
@@ -156,29 +174,42 @@ async function runClaude(
   const params = {
     model: cfg.model,
     max_tokens: MAX_TOKENS,
-    // Opus 4.8 は指定しないと考えずに答えるので、明示する(5 系では指定しなくても同じ)
-    thinking: { type: "adaptive" },
-    // 待たせすぎないよう、考える量はほどほどにする(Sonnet 5.5 は指定しないと high)
-    output_config: { effort: "medium" },
+    ...thinkingParams(cfg.model),
     system: SYSTEM_PROMPT,
     tools: [PROPOSE_SHADER_TOOL],
     messages: [{ role: "user", content: buildUserMessage(request) }],
   } satisfies Anthropic.Beta.MessageCreateParamsNonStreaming;
-  const onPlatform = findAiModel(cfg.model)?.via === "claude";
-  if (onPlatform && !cfg.claudeWorkspaceId) throw new Error("Claude Platform on AWS のワークスペースが設定されていません");
-  const stream = onPlatform
-    ? platformClient(cfg.claudeWorkspaceId as string).beta.messages.stream(params, { signal })
-    : // 断られたときの切り替え先はこの 1 回の依頼の中でだけ覚えておく
-      mantleClient(cfg).beta.messages.stream(params, { fallbackState: new BetaFallbackState(), signal });
+  const via = findAiModel(cfg.model)?.via;
+  const stream = messagesStream(cfg, via, params, signal);
   stream.on("text", onText);
   const message = await stream.finalMessage();
+  // InvokeModel の応答の model は推論プロファイルの接頭辞(jp.)が外れた ID なので、選ばれた ID で返す
+  const model = via === "bedrock-claude" ? cfg.model : message.model;
   const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens };
   return {
-    event: withUsage(toFinalEvent(message), message.model, usage),
-    model: message.model,
+    event: withUsage(toFinalEvent(message), model, usage),
+    model,
     stopReason: message.stop_reason,
     usage: message.usage,
   };
+}
+
+function messagesStream(
+  cfg: AiConfig,
+  via: AiModel["via"] | undefined,
+  params: Anthropic.Beta.MessageCreateParamsNonStreaming,
+  signal: AbortSignal,
+) {
+  if (via === "claude") {
+    if (!cfg.claudeWorkspaceId) throw new Error("Claude Platform on AWS のワークスペースが設定されていません");
+    return platformClient(cfg.claudeWorkspaceId).beta.messages.stream(params, { signal });
+  }
+  if (via === "bedrock-claude") {
+    cachedInvoke ??= new AnthropicBedrock();
+    return cachedInvoke.beta.messages.stream(params, { signal });
+  }
+  // 断られたときの切り替え先はこの 1 回の依頼の中でだけ覚えておく
+  return mantleClient(cfg).beta.messages.stream(params, { fallbackState: new BetaFallbackState(), signal });
 }
 
 /** Claude の完成した応答を、ブラウザに送る done(または error)イベントにする */

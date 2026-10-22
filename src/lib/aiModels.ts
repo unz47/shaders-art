@@ -1,17 +1,19 @@
 // 「AI と作る」で選べるモデル。/edit の AI パネル(ブラウザ)、Route Handler(サーバー)、
 // infra(Lambda に呼び出しを許すモデルの一覧)で共有する。ここに無いモデルはサーバーが受け付けない。
 // infra から Node の型の取り除き(strip-types)で読むので、import を持たない素の TypeScript にしておく。
-// 呼び方は 2 通り(lib/server/ai.ts):
-//   bedrock … Amazon Bedrock(東京)の Converse API。コードは返答中の ```glsl ブロックで受け取る
-//   claude  … Claude Platform on AWS(Anthropic が運営し、請求は AWS)の Messages API。
-//             ワークスペースを作って ANTHROPIC_AWS_WORKSPACE_ID を設定するまでは選べない
-//             (このアカウントでは Bedrock の Claude が使えない制限があるため、こちらで呼ぶ)
+// 呼び方は 3 通り(lib/server/ai.ts):
+//   bedrock        … Amazon Bedrock(東京)の Converse API。コードは返答中の ```glsl ブロックで受け取る
+//   bedrock-claude … Amazon Bedrock(東京)の InvokeModel に Messages API の形で送る。コードは propose_shader ツールで
+//                    受け取る。ID は日本国内で処理する推論プロファイル(jp.)。このアカウントの Bedrock で使える
+//                    Claude は Sonnet 4.6 と Haiku 4.5 だけ(Opus と 5 系は 403。Messages API の bedrock-mantle は全部 403)
+//   claude         … Claude Platform on AWS(Anthropic が運営し、請求は AWS)の Messages API。
+//                    ワークスペースを作って ANTHROPIC_AWS_WORKSPACE_ID を設定するまでは選べない
 //
 // Bedrock の候補は 2026-10 に同じ依頼(リングを 2 重に・夕焼け色に)を 1 回ずつ送って選んだ。
 // GLM 4.7 は 150 秒待っても返らず、DeepSeek V3.2 は 13 秒かかったので外した。
 
 export interface AiModel {
-  /** モデル ID(Bedrock の ID か、Claude Platform on AWS の ID) */
+  /** モデル ID(Bedrock のモデルか推論プロファイルの ID か、Claude Platform on AWS の ID) */
   id: string;
   label: string;
   maker: string;
@@ -19,7 +21,7 @@ export interface AiModel {
   note: string;
   /** オンデマンド料金(100 万トークンあたり USD、2026-10 時点。Bedrock は東京リージョン) */
   price: { input: number; output: number };
-  via: "bedrock" | "claude";
+  via: "bedrock" | "bedrock-claude" | "claude";
 }
 
 export const AI_MODELS: readonly AiModel[] = [
@@ -70,6 +72,22 @@ export const AI_MODELS: readonly AiModel[] = [
     note: "大きなモデル。少し高い",
     price: { input: 0.72, output: 3.6 },
     via: "bedrock",
+  },
+  {
+    id: "jp.anthropic.claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
+    maker: "Anthropic",
+    note: "考えてから答える。高い",
+    price: { input: 3.3, output: 16.5 },
+    via: "bedrock-claude",
+  },
+  {
+    id: "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
+    label: "Claude Haiku 4.5",
+    maker: "Anthropic",
+    note: "速い。考えずに答える",
+    price: { input: 1.1, output: 5.5 },
+    via: "bedrock-claude",
   },
   {
     id: "claude-haiku-5-5",

@@ -15,7 +15,7 @@ import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
 // (エディタの差分表示とプレビューの切り替えは親が持つ)。適用・却下もここから親に伝える。
 // 高さはコード欄の 45% まで。超えたら会話だけがスクロールし、見出しと入力欄は動かない。
 // 送信ボタンの左でモデルを選べる(lib/aiModels)。選んだモデルはこのブラウザに覚えておく。
-// メニューに出すのは、サーバーでいま使えるモデルだけ(Claude は Claude Platform on AWS の設定が済んでから)。
+// メニューに出すのは、サーバーでいま使えるモデルだけ(Claude の 5 系は Claude Platform on AWS の設定が済んでから)。
 // 返答の下に、答えたモデルと使ったトークンの数を出す。
 
 type Turn = {
@@ -97,7 +97,7 @@ export function AiPanel({
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const storedModel = useSyncExternalStore(subscribeModel, readModel, () => DEFAULT_AI_MODEL_ID);
-  // サーバーに聞くまでは(聞けなかったときも)Bedrock のモデルだけを出す
+  // サーバーに聞くまでは(聞けなかったときも)Bedrock のモデル(Claude を含む)だけを出す
   const [available, setAvailable] = useState<string[] | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +109,7 @@ export function AiPanel({
       cancelled = true;
     };
   }, []);
-  const models = AI_MODELS.filter((m) => (available && available.length > 0 ? available.includes(m.id) : m.via === "bedrock"));
+  const models = AI_MODELS.filter((m) => (available && available.length > 0 ? available.includes(m.id) : m.via !== "claude"));
   // 覚えていたモデルが今は使えなければ、既定のモデルにする
   const model = models.some((m) => m.id === storedModel) ? storedModel : DEFAULT_AI_MODEL_ID;
   const nextId = useRef(1);
