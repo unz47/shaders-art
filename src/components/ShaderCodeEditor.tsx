@@ -6,7 +6,8 @@ import type { KeyboardEvent } from "react";
 // CodeBlock(読み取り専用)の見た目を踏襲しつつ、textareaで編集可能にする。
 // textarea自身はスクロールさせず(rows指定で行数ぶんの高さに固定)、行番号と
 // 本文を外側のコンテナ1つだけでスクロールさせることで、行番号とコードが
-// ズレないようにしている。
+// ズレないようにしている。横並びの flex の既定(stretch)だと textarea がコンテナの高さに
+// 縮められて下の行が隠れるので、items-start で rows の高さのままにする(短いコードでも欄全体を押せるよう min-h-full)。
 // ⌘Z / ⇧⌘Z(Ctrl+Z / Ctrl+Y)はテキストエリア標準の取り消しではなく、親の履歴
 // (lib/editHistory.ts)を使う。AI の提案の適用などの差し替えも同じ履歴で戻せるように。
 export function ShaderCodeEditor({
@@ -36,7 +37,7 @@ export function ShaderCodeEditor({
   }
 
   return (
-    <div className="flex flex-1 gap-5 overflow-auto px-6 py-4 font-mono text-[13px] leading-[22px]">
+    <div className="flex flex-1 items-start gap-5 overflow-auto px-6 py-4 font-mono text-[13px] leading-[22px]">
       <div className="shrink-0 select-none text-right text-text-muted">
         {Array.from({ length: lineCount }, (_, i) => (
           <p key={i}>{i + 1}</p>
@@ -48,7 +49,7 @@ export function ShaderCodeEditor({
         onKeyDown={handleKeyDown}
         rows={lineCount}
         spellCheck={false}
-        className="min-w-0 flex-1 resize-none overflow-hidden whitespace-pre bg-transparent font-mono text-[13px] leading-[22px] text-text-primary outline-none"
+        className="min-h-full min-w-0 flex-1 resize-none overflow-hidden whitespace-pre bg-transparent font-mono text-[13px] leading-[22px] text-text-primary outline-none"
       />
     </div>
   );
