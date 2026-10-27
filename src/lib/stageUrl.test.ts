@@ -8,6 +8,7 @@ import {
   stageUrlForSource,
   stageUrlForWork,
 } from "./stageUrl";
+import { byteLength, SIZE_BUDGET_BYTES } from "./submission";
 
 const SOURCE = "// 夕焼けのリング\nvec4 render(vec2 uv, vec2 p) {\n  return vec4(uv, 0.5, 1.0);\n}";
 
@@ -18,9 +19,16 @@ describe("encodeSource / decodeSource", () => {
     expect(await decodeSource(token)).toBe(SOURCE);
   });
 
-  it("4 KB の作品でも URL は数 KB に収まる", async () => {
-    const big = `${SOURCE}\n${"// padding line for size\n".repeat(160)}`.slice(0, 4096);
-    expect((await encodeSource(big)).length).toBeLessThan(3000);
+  it("上限いっぱいの作品でも URL は数 KB に収まる", async () => {
+    // 同じ行の繰り返しだと縮みすぎるので、数値と日本語のコメントを行ごとに変えて、上限の手前まで足す
+    let full = SOURCE;
+    for (let i = 0; ; i++) {
+      const next = `${full}\n  float v${i} = sin(p.x * ${(i * 37) % 97}.${i % 10} + time) * ${(i * 53) % 89}.0; // 層 ${i} の揺れ`;
+      if (byteLength(next) > SIZE_BUDGET_BYTES) break;
+      full = next;
+    }
+    expect(byteLength(full)).toBeGreaterThan(SIZE_BUDGET_BYTES - 100);
+    expect((await encodeSource(full)).length).toBeLessThan(8000);
   });
 });
 

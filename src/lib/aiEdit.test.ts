@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { AI_HISTORY_MAX, AI_PROMPT_MAX, encodeSseEvent, parseSseEvents, validateAiEditRequest } from "./aiEdit";
+import {
+  AI_HISTORY_MAX,
+  AI_PROMPT_MAX,
+  AI_SOURCE_MAX_BYTES,
+  encodeSseEvent,
+  parseSseEvents,
+  validateAiEditRequest,
+} from "./aiEdit";
 
 describe("validateAiEditRequest", () => {
   it("依頼を整えて通し、履歴は直近だけ残す", () => {
@@ -26,7 +33,7 @@ describe("validateAiEditRequest", () => {
     [null, "本文が JSON オブジェクトではありません"],
     [{ source: "x", prompt: "  " }, "依頼を入力してください"],
     [{ source: "x", prompt: "a".repeat(AI_PROMPT_MAX + 1) }, `依頼は ${AI_PROMPT_MAX} 文字以内にしてください`],
-    [{ source: "x".repeat(16 * 1024 + 1), prompt: "a" }, "コードが長すぎます(16 KB まで)"],
+    [{ source: "x".repeat(AI_SOURCE_MAX_BYTES + 1), prompt: "a" }, "コードが長すぎます(24 KB まで)"],
   ])("不正な依頼を弾く: %j", (input, message) => {
     expect(validateAiEditRequest(input)).toEqual({ ok: false, errors: [message] });
   });
