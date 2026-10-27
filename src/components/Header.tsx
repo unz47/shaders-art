@@ -15,18 +15,26 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@frost-ui/react/organisms/menu";
+import { SearchBox } from "@/components/SearchBox";
 import { avatarBackground, avatarInitial } from "@/lib/avatar";
 import { loginHref, type SessionUser, useSession } from "@/lib/useSession";
 import moonIcon from "@/icons/moon.svg";
 import searchIcon from "@/icons/search.svg";
 
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
-// 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/テーマ切り替え
+// 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/テーマ切り替え。検索は /works?q=… に送る
 // Rooms は行き先が未設計のため削除。
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
 // アバター(押すとメールアドレス・お気に入り・自分の作品・Sign out のメニュー)を一番右に出す。
 // 閲覧はログイン不要。作品を作る入口はナビの Edit だけにする(Submit ボタンは同じ行き先なので外した)。
-export function Header({ showSearch = true }: { showSearch?: boolean }) {
+export function Header({
+  showSearch = true,
+  searchQuery = "",
+}: {
+  showSearch?: boolean;
+  /** 検索欄に入れておく言葉(/works の検索結果を出しているとき) */
+  searchQuery?: string;
+}) {
   // 作品詳細ページ(/s/...)と「すべての作品」(/works)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/") || pathname.startsWith("/works");
@@ -79,11 +87,20 @@ export function Header({ showSearch = true }: { showSearch?: boolean }) {
 
       <div className="ml-auto flex items-center gap-sp-sm">
         {showSearch && (
-          // 検索はまだ飾り。狭い画面では場所を取ってヘッダーがはみ出すので出さない
-          <div className="hidden h-8 w-60 items-center gap-sp-xs rounded-control border border-border-subtle bg-bg-raised pl-sp-sm pr-1.5 md:flex">
-            <Image src={searchIcon} alt="" width={16} height={16} />
-            <span className="text-sm text-text-muted">Search works…</span>
-          </div>
+          <>
+            {/* 検索語が変わったら(「すべての作品を見る」で消したときなど)入力欄も合わせる */}
+            <div className="hidden w-60 md:block">
+              <SearchBox key={searchQuery} defaultValue={searchQuery} shortcut />
+            </div>
+            {/* 狭い画面では検索欄が場所を取ってヘッダーがはみ出すので、虫めがねだけにして /works の検索欄に送る */}
+            <Link
+              href="/works"
+              aria-label="作品を検索"
+              className="flex size-8 items-center justify-center rounded-control border border-border-subtle md:hidden"
+            >
+              <Image src={searchIcon} alt="" width={16} height={16} />
+            </Link>
+          </>
         )}
         <button
           onClick={toggleTheme}

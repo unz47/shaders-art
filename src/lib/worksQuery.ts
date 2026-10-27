@@ -1,8 +1,9 @@
 import type { Work } from "./works";
 
-// 「すべての作品」(/works)の並び替えとページ分けと、Home に出す作品の選び方。
+// 「すべての作品」(/works)の検索・並び替え・ページ分けと、Home に出す作品の選び方。
 // /api/works・/api/home(本物)とモックの両方で使う。
-// 作品が少ないうちは全件を読んでからここで並べる。増えてきたら GSI を足して Query に切り替える。
+// 作品が少ないうちは全件を読んでからここで絞り込んで並べる。増えてきたら GSI を足して Query に、
+// 検索は全文検索のサービスに切り替える(2026-10 時点で作品は十数件)。
 
 export type WorksSort = "new" | "popular" | "short";
 
@@ -24,10 +25,39 @@ export function parsePage(value: string | null | undefined): number {
   return Number.isInteger(page) && page >= 1 ? page : 1;
 }
 
-export function worksHref({ sort, page = 1 }: { sort: WorksSort; page?: number }): string {
+/** 検索語の長さの上限 */
+export const SEARCH_QUERY_MAX = 100;
+
+export function parseQuery(value: string | null | undefined): string {
+  return (value ?? "").trim().slice(0, SEARCH_QUERY_MAX);
+}
+
+export function worksHref({ sort, page = 1, q = "" }: { sort: WorksSort; page?: number; q?: string }): string {
   const params = new URLSearchParams({ sort });
   if (page > 1) params.set("page", String(page));
+  if (q) params.set("q", q);
   return `/works?${params}`;
+}
+
+/** 比べる前に揃える。全角・半角、大文字・小文字、カタカナ・ひらがなの違いを無視する */
+function normalizeForSearch(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+
+/**
+ * タイトル・作者名・タグ・説明のどこかに、空白で区切った言葉が全部入っていれば true(空なら全部 true)。
+ * タグは #付きで並べておくので、「#noise」と書けばタグだけに当てられる。コードの中身は見ない
+ */
+export function matchesQuery(work: Pick<Work, "title" | "author" | "description" | "tags">, query: string): boolean {
+  const terms = normalizeForSearch(query).split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const text = normalizeForSearch(
+    [work.title, work.author, work.description ?? "", ...work.tags.map((tag) => `#${tag}`)].join("\n"),
+  );
+  return terms.every((term) => text.includes(term));
 }
 
 /** visibility が無い既存作品は公開扱い */
@@ -56,13 +86,19 @@ export interface WorksPage<T> {
   items: T[];
   page: number;
   pageCount: number;
-  /** 公開作品の数 */
+  /** 検索語に合う公開作品の数(検索していなければ公開作品の数) */
   total: number;
 }
 
-/** 公開作品だけを、並べて 1 ページぶん切り出す。範囲外のページは items が空になる */
-export function queryWorks<T extends Work>(all: T[], { sort, page }: { sort: WorksSort; page: number }): WorksPage<T> {
-  const sorted = sortWorks(all.filter(isPublicWork), sort);
+/** 公開作品のうち検索語に合うものを、並べて 1 ページぶん切り出す。範囲外のページは items が空になる */
+export function queryWorks<T extends Work>(
+  all: T[],
+  { sort, page, q = "" }: { sort: WorksSort; page: number; q?: string },
+): WorksPage<T> {
+  const sorted = sortWorks(
+    all.filter((work) => isPublicWork(work) && matchesQuery(work, q)),
+    sort,
+  );
   const start = (page - 1) * WORKS_PAGE_SIZE;
   return {
     items: sorted.slice(start, start + WORKS_PAGE_SIZE),

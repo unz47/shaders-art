@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Pagination } from "@/components/Pagination";
+import { SearchBox } from "@/components/SearchBox";
 import { WorkCard } from "@/components/WorkCard";
 import { getWorks, type WorkSummary } from "@/lib/works";
 import {
@@ -27,17 +28,19 @@ import {
 // 仕様: Figma「すべて見る — /works(並び替え・ページ送り)」
 // 上に見出しと件数、右に並び替え。24 件(4 列 × 6 段)ずつで、下にページ送り。
 // 並び替えやページを変えている間は、前の一覧を薄くして残しておく(画面が空になって跳ねないように)。
+// 検索語(q)があれば、見出しを「〜の検索結果」にする。並び替えとページ送りでも検索語は残す。
+// ヘッダーの検索欄は狭い画面で隠れるので、そのときだけ見出しの上にも検索欄を出す。
 
 type Result = { key: string; data: WorksPage<WorkSummary> } | { key: string; error: string };
 
-export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) {
+export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number; q: string }) {
   const router = useRouter();
-  const key = `${sort}:${page}`;
+  const key = `${sort}:${page}:${q}`;
   const [result, setResult] = useState<Result | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    getWorks({ sort, page }).then(
+    getWorks({ sort, page, q }).then(
       (data) => {
         if (!cancelled) setResult({ key, data });
       },
@@ -48,7 +51,7 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
     return () => {
       cancelled = true;
     };
-  }, [key, sort, page]);
+  }, [key, sort, page, q]);
 
   const loading = result?.key !== key;
   const data = result && "data" in result ? result.data : null;
@@ -57,11 +60,14 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <Header />
+      <Header searchQuery={q} />
       <main className="flex flex-1 flex-col gap-7 px-sp-xl pt-10">
+        <div className="md:hidden">
+          <SearchBox key={q} defaultValue={q} sort={sort} />
+        </div>
         <div className="flex flex-wrap items-end gap-sp-md">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <h1 className="text-2xl font-medium text-text-primary">すべての作品</h1>
+            <h1 className="break-words text-2xl font-medium text-text-primary">{q ? `「${q}」の検索結果` : "すべての作品"}</h1>
             <p className="font-mono text-xs text-text-muted">{data ? `${data.total} works` : " "}</p>
           </div>
           <div className="flex items-center gap-2.5">
@@ -73,7 +79,7 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
               value={sort}
               onValueChange={(value) => {
                 // 並びを変えたら 1 ページ目に戻る
-                if (value && value !== sort) router.push(worksHref({ sort: value }));
+                if (value && value !== sort) router.push(worksHref({ sort: value, q }));
               }}
             >
               <SelectTrigger aria-labelledby="works-sort-label" className="w-48">
@@ -97,9 +103,23 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
           </EmptyState>
         )}
 
-        {!loading && data && data.total === 0 && (
+        {!loading && data && data.total === 0 && !q && (
           <EmptyState>
             <EmptyStateTitle>まだ作品がありません</EmptyStateTitle>
+          </EmptyState>
+        )}
+
+        {!loading && data && data.total === 0 && q && (
+          <EmptyState>
+            <EmptyStateTitle>「{q}」に合う作品はありません</EmptyStateTitle>
+            <EmptyStateDescription>
+              タイトル・作者名・タグ・説明から探します。言葉を変えるか、短くしてお試しください
+            </EmptyStateDescription>
+            <EmptyStateActions>
+              <Link href={worksHref({ sort })} className={buttonVariants({ variant: "secondary", size: "sm" })}>
+                すべての作品を見る
+              </Link>
+            </EmptyStateActions>
           </EmptyState>
         )}
 
@@ -108,7 +128,7 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
             <EmptyStateTitle>このページに作品はありません</EmptyStateTitle>
             <EmptyStateDescription>全部で {data.pageCount} ページです</EmptyStateDescription>
             <EmptyStateActions>
-              <Link href={worksHref({ sort })} className={buttonVariants({ variant: "secondary", size: "sm" })}>
+              <Link href={worksHref({ sort, q })} className={buttonVariants({ variant: "secondary", size: "sm" })}>
                 1 ページ目へ
               </Link>
             </EmptyStateActions>
@@ -130,7 +150,7 @@ export function WorksBrowser({ sort, page }: { sort: WorksSort; page: number }) 
 
         {!loading && data && data.items.length > 0 && data.pageCount > 1 && (
           <div className="flex flex-col items-center gap-3 pt-6">
-            <Pagination page={page} pageCount={data.pageCount} hrefFor={(p) => worksHref({ sort, page: p })} />
+            <Pagination page={page} pageCount={data.pageCount} hrefFor={(p) => worksHref({ sort, page: p, q })} />
             <p className="font-mono text-xs text-text-muted">
               {start + 1}–{start + data.items.length} / {data.total} 件
             </p>

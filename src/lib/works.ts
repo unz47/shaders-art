@@ -11,9 +11,18 @@ export type Work = MockWork;
 /** 一覧の 1 件ぶん。ホバー再生用に source も含む(詳細と同じ形) */
 export type WorkSummary = Work;
 
-/** 公開作品の一覧を、並べて 1 ページぶん(lib/worksQuery) */
-export async function getWorks({ sort, page }: { sort: WorksSort; page: number }): Promise<WorksPage<WorkSummary>> {
+/** 公開作品の一覧を、(q があれば絞り込んで)並べて 1 ページぶん(lib/worksQuery) */
+export async function getWorks({
+  sort,
+  page,
+  q = "",
+}: {
+  sort: WorksSort;
+  page: number;
+  q?: string;
+}): Promise<WorksPage<WorkSummary>> {
   const params = new URLSearchParams({ sort, page: String(page) });
+  if (q) params.set("q", q);
   const res = await fetch(`${BASE}/works?${params}`);
   if (!res.ok) throw new Error(`一覧を取得できませんでした (${res.status})`);
   return (await res.json()) as WorksPage<WorkSummary>;

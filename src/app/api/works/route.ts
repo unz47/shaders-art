@@ -5,16 +5,20 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db, scanAllWorks, tableName, toPublicWork } from "@/lib/server/db";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 import { slugify, validateSubmission } from "@/lib/submission";
-import { parsePage, parseSort, queryWorks } from "@/lib/worksQuery";
+import { parsePage, parseQuery, parseSort, queryWorks } from "@/lib/worksQuery";
 
-// GET  /api/works?sort=new|popular|short&page=N → { items, page, pageCount, total }
-//      公開作品を並べて 24 件ずつ返す(lib/worksQuery)。一覧もホバー再生用に source を含む
+// GET  /api/works?sort=new|popular|short&page=N&q=検索語 → { items, page, pageCount, total }
+//      公開作品を(q があれば絞り込んで)並べて 24 件ずつ返す(lib/worksQuery)。一覧もホバー再生用に source を含む
 // POST /api/works(要ログイン)→ 201 { slug }
 // infra/functions/works.ts(API Gateway + Lambda版)から移植し、SSR と同じ Lambda で動かしている。
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
-  const result = queryWorks(await scanAllWorks(), { sort: parseSort(params.get("sort")), page: parsePage(params.get("page")) });
+  const result = queryWorks(await scanAllWorks(), {
+    sort: parseSort(params.get("sort")),
+    page: parsePage(params.get("page")),
+    q: parseQuery(params.get("q")),
+  });
   return NextResponse.json({ ...result, items: result.items.map(toPublicWork) });
 }
 
