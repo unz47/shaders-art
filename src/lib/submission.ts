@@ -16,12 +16,50 @@ export const TAGS_MAX = 5;
 const TAG_PATTERN = /^[a-z0-9][a-z0-9-]{0,23}$/;
 export type WorkVisibility = "public" | "private";
 
+// ライセンス。新しい投稿で選べるのは、YouTube と同じく「標準」(既定)と CC BY の 2 つだけ。
+// 標準は利用規約(/terms#license)で、ほかの人にはサイトの機能の中での利用だけを許す。
+// CC0 と CC BY-NC-SA は以前の投稿で選べたもので、その作品を表示するためだけに残している。
 export const LICENSES = [
-  { id: "CC0-1.0", label: "CC0 1.0(パブリックドメイン)" },
-  { id: "CC-BY-4.0", label: "CC BY 4.0(クレジット表記)" },
-  { id: "CC-BY-NC-SA-4.0", label: "CC BY-NC-SA 4.0(非営利・継承)" },
+  {
+    id: "shaders-art-standard",
+    label: "shaders.art 標準",
+    short: "Standard",
+    url: "/terms#license",
+    selectable: true,
+    reuse: "サイトの外でコードを使うには、作者の許可が必要です。",
+  },
+  {
+    id: "CC-BY-4.0",
+    label: "CC BY 4.0",
+    short: "CC BY",
+    url: "https://creativecommons.org/licenses/by/4.0/deed.ja",
+    selectable: true,
+    reuse: "使うときは、作者名とライセンス(CC BY 4.0)を表示してください。",
+  },
+  {
+    id: "CC0-1.0",
+    label: "CC0 1.0",
+    short: "CC0",
+    url: "https://creativecommons.org/publicdomain/zero/1.0/deed.ja",
+    selectable: false,
+    reuse: "誰でも自由に使えます。",
+  },
+  {
+    id: "CC-BY-NC-SA-4.0",
+    label: "CC BY-NC-SA 4.0",
+    short: "CC BY-NC-SA",
+    url: "https://creativecommons.org/licenses/by-nc-sa/4.0/deed.ja",
+    selectable: false,
+    reuse: "使うときは作者名とライセンスを表示し、営利目的では使わず、改変したら同じライセンスで公開してください。",
+  },
 ] as const;
 export type LicenseId = (typeof LICENSES)[number]["id"];
+export type License = (typeof LICENSES)[number];
+export const DEFAULT_LICENSE: LicenseId = "shaders-art-standard";
+
+export function findLicense(id: string): License | undefined {
+  return LICENSES.find((l) => l.id === id);
+}
 
 /**
  * 投稿規約のエントリポイント vec4 render(vec2 uv, vec2 p)。引数名や in 修飾子は自由なので、
@@ -115,7 +153,8 @@ export function validateSubmission(input: unknown): ValidationResult {
   const bytes = byteLength(source);
   errors.push(...sourceErrors(source));
 
-  const license = LICENSES.find((l) => l.id === raw.license)?.id;
+  // 以前の投稿で選べたライセンス(CC0 など)は、新しい投稿では受け付けない
+  const license = LICENSES.find((l) => l.id === raw.license && l.selectable)?.id;
   if (!license) errors.push("ライセンスを選んでください");
 
   const visibilityInput = raw.visibility;

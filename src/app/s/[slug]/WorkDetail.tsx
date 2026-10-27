@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
@@ -10,6 +11,7 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
 import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
+import { findLicense } from "@/lib/submission";
 import { getWork, type Work } from "@/lib/works";
 
 // 仕様: Figma "Shader / Desktop 1440"(node 41:513)。/edit と同じ「左にコード・
@@ -85,10 +87,32 @@ export function WorkDetail({ slug }: { slug: string }) {
 
   // 投稿 API は ISO の日時、初期データは日付だけで入っているので、日付部分だけ見せる
   const published = work.createdAt.slice(0, 10);
-  const spec: [string, string][] = [
+  const license = findLicense(work.license);
+  const spec: [string, ReactNode][] = [
     ["公開設定", work.visibility === "private" ? "非公開" : "公開"],
     ["Size", `${work.bytes} B`],
-    ["License", work.license],
+    [
+      "License",
+      // 標準は利用規約の該当箇所へ、CC はクリエイティブ・コモンズの説明ページへ
+      license ? (
+        license.url.startsWith("/") ? (
+          <Link href={license.url} className="underline underline-offset-2 hover:text-text-secondary">
+            {license.label}
+          </Link>
+        ) : (
+          <a
+            href={license.url}
+            target="_blank"
+            rel="noopener"
+            className="underline underline-offset-2 hover:text-text-secondary"
+          >
+            {license.label}
+          </a>
+        )
+      ) : (
+        work.license
+      ),
+    ],
     ["Published", published],
   ];
 
@@ -138,7 +162,14 @@ export function WorkDetail({ slug }: { slug: string }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => copyText(work.source, "コピーしました", "作品のコードをクリップボードに入れました。")}
+              // コードはそのまま読めるのでコピーも止めないが、サイトの外での使い方はライセンスに従ってもらう
+              onClick={() =>
+                copyText(
+                  work.source,
+                  "コピーしました",
+                  license ? `${license.label} の作品です。${license.reuse}` : "作品のコードをクリップボードに入れました。",
+                )
+              }
             >
               コードをコピー
             </Button>

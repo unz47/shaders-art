@@ -27,7 +27,6 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@frost-ui/react/organisms/menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { AI_PANEL_MIN_HEIGHT_PX, type AiAccess, AiPanel } from "@/components/AiPanel";
 import { CodeDiff } from "@/components/CodeDiff";
@@ -40,9 +39,11 @@ import {
   AUTHOR_MAX,
   byteLength,
   checkLoopsBounded,
+  DEFAULT_LICENSE,
   DESCRIPTION_MAX,
+  findLicense,
   FRAME_TIME_BUDGET_MS,
-  LICENSES,
+  type LicenseId,
   SIZE_BUDGET_BYTES,
   TITLE_MAX,
   type WorkVisibility,
@@ -294,6 +295,22 @@ function writeTitle(title: string | null) {
   }
 }
 
+// 投稿ダイアログのライセンスの選択肢。ライセンスの名前ではなく、ほかの人が何をしてよいかで選んでもらう
+// (lib/submission の LICENSES のうち、新しい投稿で選べるもの)
+const LICENSE_CHOICES: { id: LicenseId; title: string; description: string }[] = [
+  {
+    id: "shaders-art-standard",
+    title: "サイトの中でだけ使ってよい",
+    description:
+      "見る・配信の背景や埋め込みに使う・サイト内でリミックスする、まで。コードをサイトの外で使うには、あなたの許可が要ります",
+  },
+  {
+    id: "CC-BY-4.0",
+    title: "名前を出せば、どこでも自由に使ってよい",
+    description: "サイトの外でも、改変や販売を含めて使えます。使う人はあなたの名前を表示します。あとから取り消せません",
+  },
+];
+
 type SubmitForm = {
   title: string;
   author: string;
@@ -305,7 +322,7 @@ type SubmitForm = {
 const EMPTY_FORM: SubmitForm = {
   title: "",
   author: "",
-  license: LICENSES[0].id,
+  license: DEFAULT_LICENSE,
   visibility: "public",
   tags: "",
   description: "",
@@ -969,25 +986,40 @@ export default function EditPage() {
                 onChange={(e) => updateForm("author", e.target.value)}
               />
             </Field>
-            <Field label="ライセンス" htmlFor="submit-license">
-              <Select
-                value={form.license}
-                onValueChange={(value) => {
-                  if (typeof value === "string") updateForm("license", value);
-                }}
-              >
-                <SelectTrigger id="submit-license">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LICENSES.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 flex w-full items-baseline text-sm font-medium text-text-primary">
+                <span className="flex-1">ほかの人の使い方</span>
+                {/* ダイアログを閉じずに読めるよう別のタブで開く(下書きは残る) */}
+                <a
+                  href="/terms#license"
+                  target="_blank"
+                  rel="noopener"
+                  className="text-xs font-normal text-text-secondary underline underline-offset-2 hover:text-text-primary"
+                >
+                  ライセンスについて
+                </a>
+              </legend>
+              {LICENSE_CHOICES.map((choice) => (
+                <label
+                  key={choice.id}
+                  className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3"
+                >
+                  <input
+                    className="mt-1 accent-accent-default"
+                    type="radio"
+                    name="license"
+                    value={choice.id}
+                    checked={form.license === choice.id}
+                    onChange={() => updateForm("license", choice.id)}
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-sm text-text-primary">{choice.title}</span>
+                    <span className="text-xs text-text-muted">{choice.description}</span>
+                    <span className="font-mono text-[11px] text-text-muted">{findLicense(choice.id)?.label}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-1 text-sm font-medium text-text-primary">公開範囲</legend>
               <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
