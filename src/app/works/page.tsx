@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getDictionary } from "@/lib/i18n/server";
 import { parsePage, parseQuery, parseSort } from "@/lib/worksQuery";
 import { WorksBrowser } from "./WorksBrowser";
 
@@ -8,8 +9,9 @@ import { WorksBrowser } from "./WorksBrowser";
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
 export async function generateMetadata({ searchParams }: PageProps<"/works">): Promise<Metadata> {
-  const q = parseQuery(first((await searchParams).q));
-  return { title: q ? `「${q}」の検索結果 — shaders.art` : "すべての作品 — shaders.art" };
+  const [params, t] = await Promise.all([searchParams, getDictionary()]);
+  const q = parseQuery(first(params.q));
+  return { title: `${q ? t.works.searchTitle(q) : t.works.title} — shaders.art` };
 }
 
 export default async function WorksPage({ searchParams }: PageProps<"/works">) {

@@ -17,8 +17,8 @@ export interface AiModel {
   id: string;
   label: string;
   maker: string;
-  /** 選ぶときの一言 */
-  note: string;
+  /** 選ぶときの一言(画面の言語で出す。このファイルは import を持てないので、言語ごとに持つ) */
+  note: { en: string; ja: string };
   /** オンデマンド料金(100 万トークンあたり USD、2026-10 時点。Bedrock は東京リージョン) */
   price: { input: number; output: number };
   via: "bedrock" | "bedrock-claude" | "claude";
@@ -29,7 +29,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "qwen.qwen3-coder-480b-a35b-v1:0",
     label: "Qwen3 Coder 480B",
     maker: "Qwen",
-    note: "標準。コード向けで速い",
+    note: { en: "Default. Built for code and fast", ja: "標準。コード向けで速い" },
     price: { input: 0.54, output: 2.18 },
     via: "bedrock",
   },
@@ -37,7 +37,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "qwen.qwen3-coder-30b-a3b-v1:0",
     label: "Qwen3 Coder 30B",
     maker: "Qwen",
-    note: "いちばん速くて安い。小さな直しに",
+    note: { en: "Fastest and cheapest. Good for small fixes", ja: "いちばん速くて安い。小さな直しに" },
     price: { input: 0.18, output: 0.73 },
     via: "bedrock",
   },
@@ -45,7 +45,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "openai.gpt-oss-120b-1:0",
     label: "gpt-oss-120b",
     maker: "OpenAI",
-    note: "考えてから答える。安い",
+    note: { en: "Thinks before answering. Cheap", ja: "考えてから答える。安い" },
     price: { input: 0.18, output: 0.73 },
     via: "bedrock",
   },
@@ -53,7 +53,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "minimax.minimax-m2.5",
     label: "MiniMax M2.5",
     maker: "MiniMax",
-    note: "考えてから答える",
+    note: { en: "Thinks before answering", ja: "考えてから答える" },
     price: { input: 0.36, output: 1.44 },
     via: "bedrock",
   },
@@ -61,7 +61,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "mistral.devstral-2-123b",
     label: "Devstral 2",
     maker: "Mistral AI",
-    note: "コード向け",
+    note: { en: "Built for code", ja: "コード向け" },
     price: { input: 0.48, output: 2.4 },
     via: "bedrock",
   },
@@ -69,7 +69,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "moonshotai.kimi-k2.5",
     label: "Kimi K2.5",
     maker: "Moonshot AI",
-    note: "大きなモデル。少し高い",
+    note: { en: "Large model. A bit pricier", ja: "大きなモデル。少し高い" },
     price: { input: 0.72, output: 3.6 },
     via: "bedrock",
   },
@@ -77,7 +77,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "jp.anthropic.claude-sonnet-4-6",
     label: "Claude Sonnet 4.6",
     maker: "Anthropic",
-    note: "考えてから答える。高い",
+    note: { en: "Thinks before answering. Pricey", ja: "考えてから答える。高い" },
     price: { input: 3.3, output: 16.5 },
     via: "bedrock-claude",
   },
@@ -85,7 +85,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "jp.anthropic.claude-haiku-4-5-20251001-v1:0",
     label: "Claude Haiku 4.5",
     maker: "Anthropic",
-    note: "速い。考えずに答える",
+    note: { en: "Fast. Answers without thinking", ja: "速い。考えずに答える" },
     price: { input: 1.1, output: 5.5 },
     via: "bedrock-claude",
   },
@@ -93,7 +93,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "claude-haiku-5-5",
     label: "Claude Haiku 5.5",
     maker: "Anthropic",
-    note: "速くて安い",
+    note: { en: "Fast and cheap", ja: "速くて安い" },
     price: { input: 0.1, output: 0.5 },
     via: "claude",
   },
@@ -101,7 +101,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "claude-sonnet-5-5",
     label: "Claude Sonnet 5.5",
     maker: "Anthropic",
-    note: "賢さと速さのバランス",
+    note: { en: "Balance of smarts and speed", ja: "賢さと速さのバランス" },
     price: { input: 2, output: 10 },
     via: "claude",
   },
@@ -109,7 +109,7 @@ export const AI_MODELS: readonly AiModel[] = [
     id: "claude-opus-5-5",
     label: "Claude Opus 5.5",
     maker: "Anthropic",
-    note: "いちばん賢い。高い",
+    note: { en: "Smartest. Pricey", ja: "いちばん賢い。高い" },
     price: { input: 4, output: 20 },
     via: "claude",
   },

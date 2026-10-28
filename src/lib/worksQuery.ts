@@ -5,13 +5,10 @@ import type { Work } from "./works";
 // 作品が少ないうちは全件を読んでからここで絞り込んで並べる。増えてきたら GSI を足して Query に、
 // 検索は全文検索のサービスに切り替える(2026-10 時点で作品は十数件)。
 
+/** 並び順。画面に出す名前は lib/i18n の works.sort */
 export type WorksSort = "new" | "popular" | "short";
 
-export const WORKS_SORT_LABELS: Record<WorksSort, string> = {
-  new: "新しい順",
-  popular: "お気に入りが多い順",
-  short: "コードが短い順",
-};
+export const WORKS_SORTS: readonly WorksSort[] = ["new", "popular", "short"];
 
 /** 1 ページの件数(4 列 × 6 段) */
 export const WORKS_PAGE_SIZE = 24;

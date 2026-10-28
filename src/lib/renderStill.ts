@@ -5,6 +5,18 @@ import { buildFragmentShader, VERTEX_SHADER } from "./glsl";
 // プレビューの canvas をそのまま保存すると表示サイズでしか撮れないので、描き直す。
 // uniform はプレビューと同じ(attention 0、mouse は中心)。
 
+/** 書き出せなかった理由。文言は画面の言語で出すので(lib/i18n の edit.renderError)、ここでは理由と手がかりだけを持つ */
+export class RenderError extends Error {
+  constructor(
+    readonly reason: "too-large" | "compile" | "no-image",
+    /** too-large なら上限の px、compile ならコンパイラのログ */
+    readonly detail = "",
+  ) {
+    super(detail ? `${reason}: ${detail}` : reason);
+    this.name = "RenderError";
+  }
+}
+
 export interface OffscreenShader {
   /** 描いた結果が入っている canvas(描画バッファは残してある) */
   canvas: HTMLCanvasElement;
@@ -39,7 +51,7 @@ export function createOffscreenShader(source: string, width: number, height: num
   const max = renderer.capabilities.maxTextureSize;
   if (width > max || height > max) {
     dispose();
-    throw new Error(`この環境では ${max}px より大きい画像は書き出せません`);
+    throw new RenderError("too-large", String(max));
   }
   let compileError: string | null = null;
   renderer.debug.onShaderError = (gl, _program, glVertexShader, glFragmentShader) => {
@@ -57,7 +69,7 @@ export function createOffscreenShader(source: string, width: number, height: num
     render(time) {
       uniforms.time.value = time;
       renderer.render(scene, camera);
-      if (compileError !== null) throw new Error(`コンパイルに失敗しました: ${compileError}`);
+      if (compileError !== null) throw new RenderError("compile", compileError);
     },
     dispose,
   };
@@ -75,7 +87,7 @@ export async function renderStillPng(source: string, { width, height, time }: St
   try {
     shader.render(time);
     const blob = await new Promise<Blob | null>((resolve) => shader.canvas.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("画像を作れませんでした");
+    if (!blob) throw new RenderError("no-image");
     return blob;
   } finally {
     shader.dispose();

@@ -20,15 +20,18 @@ export function Pagination({
   page,
   pageCount,
   hrefFor,
+  label,
 }: {
   page: number;
   pageCount: number;
   hrefFor: (page: number) => string;
+  /** 読み上げ用の名前(画面の言語で) */
+  label: string;
 }) {
   if (pageCount <= 1) return null;
 
   return (
-    <nav aria-label="ページ送り" className="flex items-center gap-sp-xs">
+    <nav aria-label={label} className="flex items-center gap-sp-xs">
       {page > 1 ? (
         <Link href={hrefFor(page - 1)} className={`${stepClass} hover:text-text-primary`}>
           ← Previous
