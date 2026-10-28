@@ -2,6 +2,7 @@
 // 作品は vec4 render(vec2 uv, vec2 p) の本体だけなので、どれも lib/glsl.ts の buildFragmentShader と
 // 同じ座標系(uv は 0〜1、p は中心原点・縦 -1〜1・横はアスペクト比で伸びる)で包む。
 // 静止画は Three.js で描くので lib/renderStill.ts にある。
+// 書き出したファイルは誰が開くか分からないので、中に入る文言(コメント・エラー)は画面の言語に関わらず英語にする。
 
 import { slugify } from "./submission";
 
@@ -29,7 +30,7 @@ function displayTitle(title: string): string {
 export function toShadertoy(source: string, meta: ExportMeta): string {
   return [
     `// ${displayTitle(meta.title)}`,
-    "// shaders.art から Shadertoy 用に書き出し",
+    "// Exported for Shadertoy from shaders.art",
     "#define time iTime",
     "#define resolution iResolution.xy",
     "#define attention 0.0",
@@ -59,7 +60,7 @@ export function buildStandaloneHtml(source: string, meta: ExportMeta): string {
   const title = escapeHtml(displayTitle(meta.title));
   const code = JSON.stringify(source).replace(/</g, "\\u003c");
   return `<!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -74,7 +75,7 @@ export function buildStandaloneHtml(source: string, meta: ExportMeta): string {
 <canvas></canvas>
 <pre id="error" hidden></pre>
 <script>
-// ${title} — shaders.art から書き出し
+// ${title} — exported from shaders.art
 const RENDER = ${code};
 const canvas = document.querySelector("canvas");
 const errorView = document.getElementById("error");
@@ -85,7 +86,7 @@ function fail(message) {
   errorView.hidden = false;
   throw new Error(message);
 }
-if (!gl) fail("WebGL2 に対応したブラウザで開いてください");
+if (!gl) fail("Open this file in a browser that supports WebGL2");
 
 const VERTEX = \`#version 300 es
 in vec2 position;
@@ -114,17 +115,17 @@ function compile(type, text) {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, text);
   gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) fail(gl.getShaderInfoLog(shader) || "コンパイルに失敗しました");
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) fail(gl.getShaderInfoLog(shader) || "Compilation failed");
   return shader;
 }
 const program = gl.createProgram();
 gl.attachShader(program, compile(gl.VERTEX_SHADER, VERTEX));
 gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAGMENT));
 gl.linkProgram(program);
-if (!gl.getProgramParameter(program, gl.LINK_STATUS)) fail(gl.getProgramInfoLog(program) || "リンクに失敗しました");
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) fail(gl.getProgramInfoLog(program) || "Linking failed");
 gl.useProgram(program);
 
-// 画面全体を覆う三角形 1 枚
+// One triangle that covers the whole screen
 const buffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -145,7 +146,7 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// マウスの位置は p と同じ座標系(中心原点・縦 -1〜1)で渡す
+// The mouse uses the same coordinates as p (origin at the center, -1 to 1 vertically)
 canvas.addEventListener("pointermove", (event) => {
   const rect = canvas.getBoundingClientRect();
   mouseX = ((event.clientX - rect.left) / rect.width - 0.5) * 2 * (rect.width / rect.height);

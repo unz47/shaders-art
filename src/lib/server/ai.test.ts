@@ -1,5 +1,7 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
+import { en } from "../i18n/en";
+import { ja } from "../i18n/ja";
 import {
   availableModels,
   buildUserMessage,
@@ -7,6 +9,8 @@ import {
   isClaudeModel,
   parseCodeBlockReply,
   streamableReplyLength,
+  systemPrompt,
+  systemPromptCodeBlock,
   thinkingParams,
   toFinalEvent,
 } from "./ai";
@@ -67,8 +71,8 @@ describe("thinkingParams", () => {
 describe("buildUserMessage", () => {
   it("履歴があれば先頭に、コードと依頼はその後に入れる", () => {
     const text = buildUserMessage({ source: SOURCE, prompt: "赤くして", history: [{ prompt: "太く", reply: "太くしました" }] });
-    expect(text.indexOf("これまでのやりとり")).toBeLessThan(text.indexOf(SOURCE));
-    expect(text.endsWith("# 依頼\n\n赤くして")).toBe(true);
+    expect(text.indexOf("# Conversation so far")).toBeLessThan(text.indexOf(SOURCE));
+    expect(text.endsWith("# Request\n\n赤くして")).toBe(true);
   });
 });
 
@@ -80,12 +84,13 @@ describe("toFinalEvent", () => {
         { type: "text", text: "赤くしました。" },
         { type: "tool_use", id: "t1", name: "propose_shader", input: { source: SOURCE.replace("0.5", "0.0") } },
       ]),
+      ja,
     );
     expect(event).toEqual({ type: "done", reply: "赤くしました。", source: SOURCE.replace("0.5", "0.0"), errors: [] });
   });
 
   it("ツールを使わない返答はコードの提案なし", () => {
-    expect(toFinalEvent(message([{ type: "text", text: "render は画素ごとに呼ばれます。" }], "end_turn"))).toEqual({
+    expect(toFinalEvent(message([{ type: "text", text: "render は画素ごとに呼ばれます。" }], "end_turn"), ja)).toEqual({
       type: "done",
       reply: "render は画素ごとに呼ばれます。",
       source: null,
@@ -101,13 +106,14 @@ describe("toFinalEvent", () => {
         { type: "text", text: "やり直しました。" },
         { type: "tool_use", id: "t2", name: "propose_shader", input: { source: "gl_FragCoord" } },
       ]),
+      ja,
     );
     expect(event.type === "done" && event.reply).toBe("やり直しました。");
     expect(event.type === "done" && event.errors).toContain("gl_FragCoord は使えません");
   });
 
   it.each(["refusal", "max_tokens"] as const)("%s はエラーにする", (stopReason) => {
-    expect(toFinalEvent(message([], stopReason)).type).toBe("error");
+    expect(toFinalEvent(message([], stopReason), ja).type).toBe("error");
   });
 });
 
@@ -151,5 +157,15 @@ describe("streamableReplyLength", () => {
     ["説明です。\n```glsl\nvec4", 6],
   ])("%j → %d", (text, expected) => {
     expect(streamableReplyLength(text)).toBe(expected);
+  });
+});
+
+describe("systemPrompt", () => {
+  it("説明文は依頼と同じ言語で。分からなければ画面の言語で書かせる", () => {
+    for (const prompt of [systemPrompt(en), systemPromptCodeBlock(en)]) {
+      expect(prompt).toContain('same language as the request under "# Request"');
+      expect(prompt).toContain("write in English.");
+    }
+    expect(systemPrompt(ja)).toContain("write in Japanese.");
   });
 });

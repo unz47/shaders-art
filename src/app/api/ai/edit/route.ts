@@ -1,6 +1,8 @@
 import { APIError, RateLimitError } from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
+import type { Dictionary } from "@/lib/i18n";
+import { getDictionary } from "@/lib/i18n/server";
 import { availableModels, getAiConfig, runAiEdit } from "@/lib/server/ai";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 
@@ -20,22 +22,24 @@ const BUSY_ERRORS = new Set(["ThrottlingException", "ServiceUnavailableException
 
 export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return NextResponse.json({ message: "forbidden" }, { status: 403 });
+  // 文言は依頼の言語で返す(Cookie → Accept-Language → 英語)
+  const t = await getDictionary();
   if (!request.headers.get("content-type")?.includes("application/json")) {
-    return NextResponse.json({ message: "Content-Type は application/json にしてください" }, { status: 415 });
+    return NextResponse.json({ message: t.api.jsonOnly }, { status: 415 });
   }
 
   const session = await getSession();
-  if (!session) return NextResponse.json({ message: "AI と作るにはログインが必要です" }, { status: 401 });
+  if (!session) return NextResponse.json({ message: t.ai.loginNeeded }, { status: 401 });
 
   const cfg = getAiConfig();
-  if (!cfg) return NextResponse.json({ message: "AI はまだ設定されていません" }, { status: 503 });
+  if (!cfg) return NextResponse.json({ message: t.ai.notConfigured }, { status: 503 });
 
-  const parsed = validateAiEditRequest(await request.json().catch(() => null));
-  if (!parsed.ok) return NextResponse.json({ message: "依頼の内容に問題があります", errors: parsed.errors }, { status: 400 });
+  const parsed = validateAiEditRequest(await request.json().catch(() => null), t);
+  if (!parsed.ok) return NextResponse.json({ message: t.ai.badRequest, errors: parsed.errors }, { status: 400 });
   // 一覧にあっても、設定が済んでいないモデル(Claude Platform on AWS のワークスペースが無い Claude)は使えない
   const chosen = parsed.value.model;
   if (chosen !== null && !availableModels(cfg).some((m) => m.id === chosen)) {
-    return NextResponse.json({ message: "このモデルはまだ使えません" }, { status: 400 });
+    return NextResponse.json({ message: t.ai.modelUnavailable }, { status: 400 });
   }
 
   const encoder = new TextEncoder();
@@ -55,6 +59,7 @@ export async function POST(request: NextRequest) {
         // 選ばれたモデル(lib/aiModels で確かめ済み)。選ばれていなければ既定(AI_MODEL)
         const model = parsed.value.model ?? cfg.model;
         const outcome = await runAiEdit({ ...cfg, model }, parsed.value, {
+          t,
           onText: (text) => send({ type: "text", text }),
           signal: abort.signal,
         });
@@ -66,7 +71,7 @@ export async function POST(request: NextRequest) {
         // ブラウザが止めた(接続を切った)ときは、返す相手がいないので何もしない
         if (!abort.signal.aborted) {
           console.error("[ai/edit] failed", error);
-          send({ type: "error", message: errorMessage(error) });
+          send({ type: "error", message: errorMessage(error, t) });
         }
       } finally {
         clearInterval(ping);
@@ -91,9 +96,9 @@ export async function POST(request: NextRequest) {
   });
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, t: Dictionary): string {
   const busy = error instanceof RateLimitError || (error instanceof Error && BUSY_ERRORS.has(error.name));
-  if (busy) return "AI が混み合っています。少し待ってからお試しください";
-  if (error instanceof APIError) return "AI の呼び出しに失敗しました。もう一度お試しください";
-  return "AI の呼び出し中にエラーが起きました";
+  if (busy) return t.ai.busy;
+  if (error instanceof APIError) return t.ai.apiFailed;
+  return t.ai.unexpected;
 }

@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { encodePendingLogin, getAuthConfig, pkceChallenge, randomToken, safeReturnTo } from "@/lib/server/oauth";
 import { COOKIE, cookieSecure, PENDING_COOKIE_PATH, siteOrigin } from "@/lib/server/session";
+import { getDictionary } from "@/lib/i18n/server";
 
 // GET /api/auth/login?returnTo=/edit → Cognito の Hosted UI へリダイレクト
 // state(CSRF 対策)と PKCE の verifier は httpOnly クッキーに入れ、コールバックで照合する。
 export async function GET(request: NextRequest) {
   const cfg = getAuthConfig();
-  if (!cfg) return NextResponse.json({ message: "ログインはまだ設定されていません" }, { status: 503 });
+  if (!cfg) return NextResponse.json({ message: (await getDictionary()).api.loginNotConfigured }, { status: 503 });
 
   const state = randomToken();
   const verifier = randomToken();

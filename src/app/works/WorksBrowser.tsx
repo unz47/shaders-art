@@ -16,10 +16,11 @@ import { Header } from "@/components/Header";
 import { Pagination } from "@/components/Pagination";
 import { SearchBox } from "@/components/SearchBox";
 import { WorkCard } from "@/components/WorkCard";
-import { getWorks, type WorkSummary } from "@/lib/works";
+import { useI18n } from "@/lib/i18n/client";
+import { ApiError, getWorks, type WorkSummary } from "@/lib/works";
 import {
   WORKS_PAGE_SIZE,
-  WORKS_SORT_LABELS,
+  WORKS_SORTS,
   worksHref,
   type WorksPage,
   type WorksSort,
@@ -31,10 +32,11 @@ import {
 // 検索語(q)があれば、見出しを「〜の検索結果」にする。並び替えとページ送りでも検索語は残す。
 // ヘッダーの検索欄は狭い画面で隠れるので、そのときだけ見出しの上にも検索欄を出す。
 
-type Result = { key: string; data: WorksPage<WorkSummary> } | { key: string; error: string };
+type Result = { key: string; data: WorksPage<WorkSummary> } | { key: string; error: unknown };
 
 export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number; q: string }) {
   const router = useRouter();
+  const { t } = useI18n();
   const key = `${sort}:${page}:${q}`;
   const [result, setResult] = useState<Result | null>(null);
 
@@ -45,7 +47,7 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
         if (!cancelled) setResult({ key, data });
       },
       (error: unknown) => {
-        if (!cancelled) setResult({ key, error: error instanceof Error ? error.message : "" });
+        if (!cancelled) setResult({ key, error });
       },
     );
     return () => {
@@ -67,15 +69,15 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
         </div>
         <div className="flex flex-wrap items-end gap-sp-md">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <h1 className="break-words text-2xl font-medium text-text-primary">{q ? `「${q}」の検索結果` : "すべての作品"}</h1>
+            <h1 className="break-words text-2xl font-medium text-text-primary">{q ? t.works.searchTitle(q) : t.works.title}</h1>
             <p className="font-mono text-xs text-text-muted">{data ? `${data.total} works` : " "}</p>
           </div>
           <div className="flex items-center gap-2.5">
             <span id="works-sort-label" className="text-[13px] text-text-secondary">
-              並び替え
+              {t.works.sortLabel}
             </span>
             <Select
-              items={WORKS_SORT_LABELS}
+              items={t.works.sort}
               value={sort}
               onValueChange={(value) => {
                 // 並びを変えたら 1 ページ目に戻る
@@ -86,9 +88,9 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(Object.keys(WORKS_SORT_LABELS) as WorksSort[]).map((value) => (
+                {WORKS_SORTS.map((value) => (
                   <SelectItem key={value} value={value}>
-                    {WORKS_SORT_LABELS[value]}
+                    {t.works.sort[value]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -98,26 +100,24 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
 
         {error !== null && (
           <EmptyState>
-            <EmptyStateTitle>作品を読み込めませんでした</EmptyStateTitle>
-            <EmptyStateDescription>{error}</EmptyStateDescription>
+            <EmptyStateTitle>{t.common.loadFailed}</EmptyStateTitle>
+            {error instanceof ApiError && <EmptyStateDescription>{t.common.requestFailed(error.status)}</EmptyStateDescription>}
           </EmptyState>
         )}
 
         {!loading && data && data.total === 0 && !q && (
           <EmptyState>
-            <EmptyStateTitle>まだ作品がありません</EmptyStateTitle>
+            <EmptyStateTitle>{t.common.noWorksYet}</EmptyStateTitle>
           </EmptyState>
         )}
 
         {!loading && data && data.total === 0 && q && (
           <EmptyState>
-            <EmptyStateTitle>「{q}」に合う作品はありません</EmptyStateTitle>
-            <EmptyStateDescription>
-              タイトル・作者名・タグ・説明から探します。言葉を変えるか、短くしてお試しください
-            </EmptyStateDescription>
+            <EmptyStateTitle>{t.works.noMatch(q)}</EmptyStateTitle>
+            <EmptyStateDescription>{t.works.noMatchHint}</EmptyStateDescription>
             <EmptyStateActions>
               <Link href={worksHref({ sort })} className={buttonVariants({ variant: "secondary", size: "sm" })}>
-                すべての作品を見る
+                {t.works.showAll}
               </Link>
             </EmptyStateActions>
           </EmptyState>
@@ -125,11 +125,11 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
 
         {!loading && data && data.total > 0 && data.items.length === 0 && (
           <EmptyState>
-            <EmptyStateTitle>このページに作品はありません</EmptyStateTitle>
-            <EmptyStateDescription>全部で {data.pageCount} ページです</EmptyStateDescription>
+            <EmptyStateTitle>{t.works.emptyPage}</EmptyStateTitle>
+            <EmptyStateDescription>{t.works.pageCount(data.pageCount)}</EmptyStateDescription>
             <EmptyStateActions>
               <Link href={worksHref({ sort, q })} className={buttonVariants({ variant: "secondary", size: "sm" })}>
-                1 ページ目へ
+                {t.works.firstPage}
               </Link>
             </EmptyStateActions>
           </EmptyState>
@@ -150,9 +150,14 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
 
         {!loading && data && data.items.length > 0 && data.pageCount > 1 && (
           <div className="flex flex-col items-center gap-3 pt-6">
-            <Pagination page={page} pageCount={data.pageCount} hrefFor={(p) => worksHref({ sort, page: p, q })} />
+            <Pagination
+              page={page}
+              pageCount={data.pageCount}
+              hrefFor={(p) => worksHref({ sort, page: p, q })}
+              label={t.works.pagination}
+            />
             <p className="font-mono text-xs text-text-muted">
-              {start + 1}–{start + data.items.length} / {data.total} 件
+              {t.works.range(start + 1, start + data.items.length, data.total)}
             </p>
           </div>
         )}

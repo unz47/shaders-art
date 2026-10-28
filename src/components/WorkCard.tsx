@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { FavoriteButton, FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderThumbnail } from "@/components/ShaderThumbnail";
+import { useI18n } from "@/lib/i18n/client";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { useNow } from "@/lib/useNow";
 import type { WorkSummary } from "@/lib/works";
@@ -14,7 +15,8 @@ import type { WorkSummary } from "@/lib/works";
 // お気に入りの ♡ はサムネの右上に重ねる。リンクの中にボタンを入れられないので、リンクと並べて置く
 export function WorkCard({ work }: { work: WorkSummary }) {
   const now = useNow();
-  const when = now === null ? work.createdAt.slice(0, 4) : formatRelativeTime(work.createdAt, now);
+  const { t } = useI18n();
+  const when = now === null ? work.createdAt.slice(0, 4) : formatRelativeTime(work.createdAt, now, t.time);
 
   return (
     <div className="group relative">
@@ -27,7 +29,7 @@ export function WorkCard({ work }: { work: WorkSummary }) {
             <h2 className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary transition-colors group-hover:text-accent-default">
               {work.title}
             </h2>
-            {work.visibility === "private" && <Badge>非公開</Badge>}
+            {work.visibility === "private" && <Badge>{t.common.private}</Badge>}
             <span className="font-mono text-xs text-text-muted">{work.bytes} B</span>
           </div>
           <div className="flex items-baseline gap-sp-sm text-xs">
