@@ -88,6 +88,8 @@ Claude(Haiku 5.5 / Sonnet 5.5 / Opus 5.5)は、Bedrock ではなく **Claude Pla
 1 人あたり **月 40 クレジット**と **1 日 20 回**まで(issue #43。日本時間の月初・0 時に戻る)。
 クレジットは実際の原価で減る(1 クレジット = 原価 ¥0.5 相当。1 ドル = 150 円で換算。`src/lib/aiQuota.ts`)。
 Qwen3 Coder ならおよそ 1 回 1、Claude Sonnet 4.6 なら 2〜14。途中で切れた・断られた依頼も、使ったトークンの分は数える。
+利用者が途中で止めた依頼は、使ったトークンの数が届かないので、多めに見積もった分を数える(最初の反応からの時間 × 1 秒 100 トークン)。
+モデルから最初の反応が 10 秒来なければ「混み合っています」で諦める(原価はかからないとみなし、回数だけ数える)。
 
 これとは別に、**無料の人全体の原価が月 ¥3,000** に達したら、その月は無料の人の AI を止める(運営は使える)。
 人が急に増えたり、アカウントを大量に作られたりしても、運営の負担がこの額で止まる。同時に頼まれると少し超えることがある。
@@ -112,7 +114,8 @@ filter msg = "ai-edit"
 | stats count(*) as requests, sum(costUsd) as usd, sum(credits) as credits by bin(1d), model
 ```
 
-上限で断った回数は `"ai-blocked"`(`reason` は `monthly` / `daily` / `pool`)。
+上限で断った回数は `"ai-blocked"`(`reason` は `monthly` / `daily` / `pool`)、モデルが反応しなかった回数は `"ai-timeout"`。
+途中で止めた依頼は `"ai-edit"` の `stop` が `aborted` で、`estimated` に見積もったトークンの数が入る。
 
 ```
 filter msg = "ai-blocked"

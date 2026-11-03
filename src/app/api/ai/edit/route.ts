@@ -4,7 +4,13 @@ import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/a
 import type { Dictionary } from "@/lib/i18n";
 import { getDictionary } from "@/lib/i18n/server";
 import { aiCostUsd, creditsForCost, quotaBlock, quotaMessage } from "@/lib/aiQuota";
-import { availableModels, getAiConfig, runAiEdit } from "@/lib/server/ai";
+import {
+  AiAbortedError,
+  AiFirstResponseTimeoutError,
+  availableModels,
+  getAiConfig,
+  runAiEdit,
+} from "@/lib/server/ai";
 import { getAiLimits, getAiUsage, recordAiCost, recordAiRequest } from "@/lib/server/aiUsage";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 
@@ -15,6 +21,7 @@ import { getSession, isSameOriginRequest } from "@/lib/server/session";
 // 返答を少しずつ返すため、Lambda の応答はストリーミングにしてある(infra/lib/nextjs-site.ts)。
 // CloudFront はオリジンから 30 秒何も届かないと接続を切るが、モデルが考えている間は文字が
 // 出てこないので、そのあいだも ping を送り続ける。
+// モデルから最初の反応が 10 秒来なければ「混み合っています」で諦める(lib/server/ai の FIRST_RESPONSE_TIMEOUT_MS)。
 // 1 人あたり・無料の人全体の上限と使用量の記録は lib/server/aiUsage(issue #43)。
 
 const KEEPALIVE_MS = 10_000;
@@ -107,8 +114,30 @@ export async function POST(request: NextRequest) {
           }),
         );
       } catch (error) {
-        // ブラウザが止めた(接続を切った)ときは、返す相手がいないので何もしない
-        if (!abort.signal.aborted) {
+        if (error instanceof AiAbortedError) {
+          // ブラウザが止めた(接続を切った)。返す相手はいないが、使ったトークンは届かないので、見積もった分を数える
+          // (止め続けて上限をすり抜けられないように)
+          const costUsd = aiCostUsd(error.model, error.estimatedTokens);
+          const credits = creditsForCost(costUsd);
+          await recordAiCost(session.sub, now, free, { credits, costUsd }).catch((e: unknown) =>
+            console.error("[ai/edit] usage", e),
+          );
+          console.log(
+            JSON.stringify({
+              msg: "ai-edit",
+              user: session.sub,
+              model: error.model,
+              stop: "aborted",
+              estimated: error.estimatedTokens,
+              credits,
+              costUsd,
+            }),
+          );
+        } else if (error instanceof AiFirstResponseTimeoutError) {
+          // モデルが反応しない。どのモデルでどれくらい起きるかを Logs Insights で見られるようにする
+          console.log(JSON.stringify({ msg: "ai-timeout", user: session.sub, model: error.model }));
+          send({ type: "error", message: t.ai.busy });
+        } else if (!abort.signal.aborted) {
           console.error("[ai/edit] failed", error);
           send({ type: "error", message: errorMessage(error, t) });
         }
