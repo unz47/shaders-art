@@ -25,7 +25,19 @@ export async function getWork(slug: string): Promise<Work | null> {
   return (await res.json()) as Work;
 }
 
-export type SubmitResult = { ok: true; slug: string } | { ok: false; status: number; errors: string[] };
+/**
+ * ログイン中の人の作品(非公開も含む、新しい順)。未ログインなら null。
+ * セッションのクッキーを送るため、投稿と同じく常に同じオリジンの /api に送る。
+ */
+export async function getMyWorks(): Promise<WorkSummary[] | null> {
+  const res = await fetch("/api/me/works", { cache: "no-store" });
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`作品を取得できませんでした (${res.status})`);
+  const { items } = (await res.json()) as { items: WorkSummary[] };
+  return items;
+}
+
+export type SubmitResult ={ ok: true; slug: string } | { ok: false; status: number; errors: string[] };
 
 /**
  * 投稿(要ログイン)。セッションのクッキーを送るため、NEXT_PUBLIC_API_BASE ではなく
