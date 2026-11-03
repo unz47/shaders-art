@@ -79,7 +79,8 @@ export function Header({ showSearch = true }: { showSearch?: boolean }) {
 
       <div className="ml-auto flex items-center gap-sp-sm">
         {showSearch && (
-          <div className="flex h-8 w-60 items-center gap-sp-xs rounded-control border border-border-subtle bg-bg-raised pl-sp-sm pr-1.5">
+          // 検索はまだ飾り。狭い画面では場所を取ってヘッダーがはみ出すので出さない
+          <div className="hidden h-8 w-60 items-center gap-sp-xs rounded-control border border-border-subtle bg-bg-raised pl-sp-sm pr-1.5 md:flex">
             <Image src={searchIcon} alt="" width={16} height={16} />
             <span className="text-sm text-text-muted">Search works…</span>
           </div>

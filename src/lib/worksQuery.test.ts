@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Work } from "./works";
-import { numberCollection, parsePage, parseSort, queryWorks, sortWorks, WORKS_PAGE_SIZE, worksHref } from "./worksQuery";
+import {
+  numberCollection,
+  parsePage,
+  parseSort,
+  pickIndex,
+  queryWorks,
+  selectHome,
+  sortWorks,
+  WORKS_PAGE_SIZE,
+  worksHref,
+} from "./worksQuery";
 
 function work(slug: string, fields: Partial<Work> = {}): Work {
   return {
@@ -99,5 +109,45 @@ describe("queryWorks", () => {
 
   it("収蔵作品には番号が付いて返る", () => {
     expect(queryWorks(all, { sort: "collected", page: 1 }).items[0]).toMatchObject({ slug: "c", collectionNo: 1 });
+  });
+});
+
+describe("pickIndex", () => {
+  it("日本時間の 0 時で次に進み、一周したら戻る", () => {
+    const day1 = Date.parse("2026-10-22T14:59:00Z"); // 日本時間 10/22 23:59
+    const day2 = Date.parse("2026-10-22T15:00:00Z"); // 日本時間 10/23 0:00
+    expect(pickIndex(5, day2)).toBe((pickIndex(5, day1) + 1) % 5);
+    expect(pickIndex(5, day1 + 5 * 86_400_000)).toBe(pickIndex(5, day1));
+    expect(pickIndex(0, day1)).toBe(-1);
+  });
+});
+
+describe("selectHome", () => {
+  const all = [
+    work("c1", { collected: true, collectedAt: "2026-09-01T00:00:00Z" }),
+    work("c2", { collected: true, collectedAt: "2026-09-02T00:00:00Z" }),
+    work("c3", { collected: true, collectedAt: "2026-09-03T00:00:00Z" }),
+    work("n1", { createdAt: "2026-10-20T00:00:00Z" }),
+    work("hidden", { visibility: "private", collected: true }),
+  ];
+
+  it("今日の 1 点は収蔵作品から選び、Collection からは外す", () => {
+    const now = Date.parse("2026-10-22T03:00:00Z");
+    const home = selectHome(all, now);
+    const expected = ["c1", "c2", "c3"][pickIndex(3, now)];
+    expect(home.pick?.slug).toBe(expected);
+    expect(slugs(home.collection)).toEqual(["c3", "c2", "c1"].filter((s) => s !== expected));
+    expect(home).toMatchObject({ collectedTotal: 3, total: 4 });
+    expect(home.latest[0]?.slug).toBe("n1");
+  });
+
+  it("収蔵作品が無ければ、いちばん新しい作品を今日の 1 点にする", () => {
+    const home = selectHome([work("a", { createdAt: "2026-10-01T00:00:00Z" }), work("b", { createdAt: "2026-10-02T00:00:00Z" })], 0);
+    expect(home.pick?.slug).toBe("b");
+    expect(home.collection).toEqual([]);
+  });
+
+  it("作品が無ければ空", () => {
+    expect(selectHome([], 0)).toEqual({ pick: null, collection: [], collectedTotal: 0, latest: [], total: 0 });
   });
 });
