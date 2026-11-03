@@ -610,7 +610,7 @@ export default function EditPage() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <Header showSearch={false} showSubmit={false} />
+      <Header showSearch={false} />
       <div ref={columnsRef} className="flex flex-1 overflow-hidden">
         {/* 左: コード(編集可能) */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

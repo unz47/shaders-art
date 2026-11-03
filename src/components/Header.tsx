@@ -21,12 +21,12 @@ import moonIcon from "@/icons/moon.svg";
 import searchIcon from "@/icons/search.svg";
 
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
-// 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/Submit/テーマ切り替え
+// 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/テーマ切り替え
 // Rooms は行き先が未設計のため削除。
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
-// Submit(/edit へ)とアバター(押すとメールアドレス・自分の作品・Sign out のメニュー)を出す。
-// Sign in とアバターは一番右に置く。閲覧はログイン不要。
-export function Header({ showSearch = true, showSubmit = true }: { showSearch?: boolean; showSubmit?: boolean }) {
+// アバター(押すとメールアドレス・自分の作品・Sign out のメニュー)を一番右に出す。
+// 閲覧はログイン不要。作品を作る入口はナビの Edit だけにする(Submit ボタンは同じ行き先なので外した)。
+export function Header({ showSearch = true }: { showSearch?: boolean }) {
   // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/");
@@ -83,11 +83,6 @@ export function Header({ showSearch = true, showSubmit = true }: { showSearch?: 
             <Image src={searchIcon} alt="" width={16} height={16} />
             <span className="text-sm text-text-muted">Search works…</span>
           </div>
-        )}
-        {showSubmit && session.status === "ready" && session.user && (
-          <Link href="/edit" className={buttonVariants({ variant: "primary", size: "sm" })}>
-            Submit
-          </Link>
         )}
         <button
           onClick={toggleTheme}
