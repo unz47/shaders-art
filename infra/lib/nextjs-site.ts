@@ -87,11 +87,13 @@ export class NextjsSite extends Construct {
       },
     });
 
-    // SSR Lambda(Route Handler)から作品を読む + 投稿(PutItem)だけ書ける。
-    // 更新・削除はまだ API が無いので権限も渡さない。
+    // SSR Lambda(Route Handler)から作品を読む + 投稿(PutItem)とお気に入りを書ける。
+    // お気に入りは、同じ表のお気に入りの行の追加・削除(PutItem・DeleteItem)と、作品の行の
+    // favoriteCount の増減(UpdateItem)を 1 つのトランザクションで行う(src/lib/server/favorites.ts)。
+    // 作品の更新・削除の API はまだ無い。
     const fn = this.nextjs.serverFunction.lambdaFunction;
     table.grantReadData(fn);
-    table.grant(fn, "dynamodb:PutItem");
+    table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem");
 
     // AI と作る: Claude は Messages API(bedrock-mantle)、それ以外は Converse API(bedrock-runtime)で呼ぶ。
     if (AI_MODEL.startsWith("anthropic.")) {

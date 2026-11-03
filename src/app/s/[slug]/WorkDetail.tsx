@@ -6,6 +6,7 @@ import { Button } from "@frost-ui/react/atoms/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { CodeBlock } from "@/components/CodeBlock";
+import { FavoriteButton } from "@/components/FavoriteButton";
 import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
 import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
@@ -105,6 +106,7 @@ export function WorkDetail({ slug }: { slug: string }) {
                 {work.author} · {published}
               </p>
             </div>
+            <FavoriteButton work={work} variant="inline" />
             <Menu>
               <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!stageUrl} />}>配信・埋め込み</MenuTrigger>
               <MenuContent align="end">

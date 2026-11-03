@@ -45,6 +45,22 @@ export async function getMyWorks(): Promise<WorkSummary[] | null> {
   return items;
 }
 
+/** ログイン中の人のお気に入り(新しくお気に入りにした順)。未ログインなら null */
+export async function getMyFavorites(): Promise<WorkSummary[] | null> {
+  const res = await fetch("/api/me/favorites", { cache: "no-store" });
+  if (res.status === 401) return null;
+  if (!res.ok) throw new Error(`お気に入りを取得できませんでした (${res.status})`);
+  const { items } = (await res.json()) as { items: WorkSummary[] };
+  return items;
+}
+
+/** お気に入りにする(on)・外す。何度送っても同じ結果になる */
+export async function setFavorite(slug: string, on: boolean): Promise<{ favorited: boolean; favoriteCount: number }> {
+  const res = await fetch(`/api/works/${encodeURIComponent(slug)}/favorite`, { method: on ? "POST" : "DELETE" });
+  if (!res.ok) throw new Error(`お気に入りを変えられませんでした (${res.status})`);
+  return (await res.json()) as { favorited: boolean; favoriteCount: number };
+}
+
 export type SubmitResult ={ ok: true; slug: string } | { ok: false; status: number; errors: string[] };
 
 /**

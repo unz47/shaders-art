@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
+import { FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderEditorPreview } from "@/components/ShaderEditorPreview";
 import type { WorkSummary } from "@/lib/works";
 
@@ -51,6 +52,7 @@ export function TodaysPick({ work, className = "" }: { work: WorkSummary; classN
             </span>
             <span>{work.bytes} B</span>
             <span>{work.license.replace(/-\d.*$/, "")}</span>
+            <FavoriteCount work={work} />
           </span>
         </div>
         {/* 狭い画面では作品名を優先する(タイル全体がリンクなので、ボタンが無くても押せる) */}

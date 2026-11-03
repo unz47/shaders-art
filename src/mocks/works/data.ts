@@ -16,6 +16,8 @@ export interface MockWork {
   collectedAt?: string;
   /** 収蔵番号(1 から)。保存はせず、API が収蔵日の順に数えて付ける */
   collectionNo?: number;
+  /** お気に入りにした人の数(lib/server/favorites が増減させる)。まだ誰も押していなければ無い */
+  favoriteCount?: number;
   createdAt: string;
   description: string;
   tags: string[];
