@@ -27,9 +27,9 @@ import searchIcon from "@/icons/search.svg";
 // アバター(押すとメールアドレス・自分の作品・Sign out のメニュー)を一番右に出す。
 // 閲覧はログイン不要。作品を作る入口はナビの Edit だけにする(Submit ボタンは同じ行き先なので外した)。
 export function Header({ showSearch = true }: { showSearch?: boolean }) {
-  // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
+  // 作品詳細ページ(/s/...)と「すべての作品」(/works)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
-  const galleryActive = pathname === "/" || pathname.startsWith("/s/");
+  const galleryActive = pathname === "/" || pathname.startsWith("/s/") || pathname.startsWith("/works");
   const editActive = pathname.startsWith("/edit");
   const session = useSession();
 
