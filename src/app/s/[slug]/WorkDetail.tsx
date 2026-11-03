@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { CodeBlock } from "@/components/CodeBlock";
 import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
+import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
 import { getWork, type Work } from "@/lib/works";
 
 // 仕様: Figma "Shader / Desktop 1440"(node 41:513)。/edit と同じ「左にコード・
@@ -30,11 +32,31 @@ export function WorkDetail({ slug }: { slug: string }) {
     };
   }, [slug]);
 
-  const copySource = useCallback(
-    (source: string) => {
+  // 配信背景・埋め込み用の URL。公開作品は slug の URL、非公開作品はほかの人が開けないので
+  // コードを URL に入れる(圧縮が非同期なので、コピーのクリックより前に作っておく)
+  const [stageUrl, setStageUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (state.status !== "found") return;
+    const { work } = state;
+    const origin = window.location.origin;
+    let cancelled = false;
+    const url =
+      work.visibility === "private"
+        ? stageUrlForSource(origin, work.source)
+        : Promise.resolve(stageUrlForWork(origin, work.slug));
+    void url.then((value) => {
+      if (!cancelled) setStageUrl(value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [state]);
+
+  const copyText = useCallback(
+    (text: string, title: string, description: string) => {
       void navigator.clipboard
-        .writeText(source)
-        .then(() => toast.add({ title: "コピーしました", description: "main.glsl の内容をクリップボードに入れました。" }))
+        .writeText(text)
+        .then(() => toast.add({ title, description }))
         .catch(() => toast.add({ title: "コピーできませんでした", priority: "high" }));
     },
     [toast],
@@ -83,7 +105,40 @@ export function WorkDetail({ slug }: { slug: string }) {
                 {work.author} · {published}
               </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => copySource(work.source)}>
+            <Menu>
+              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!stageUrl} />}>配信・埋め込み</MenuTrigger>
+              <MenuContent align="end">
+                <MenuItem
+                  onClick={() =>
+                    stageUrl &&
+                    copyText(
+                      stageUrl,
+                      "配信背景用の URL をコピーしました",
+                      "OBS の「ソース」→「ブラウザ」の URL に貼り付け、幅 1920・高さ 1080 にしてください。壁紙アプリにも使えます。",
+                    )
+                  }
+                >
+                  配信背景用の URL をコピー
+                </MenuItem>
+                <MenuItem
+                  onClick={() =>
+                    stageUrl &&
+                    copyText(
+                      embedSnippet(stageUrl, work.title),
+                      "埋め込みコードをコピーしました",
+                      "ブログやサイトの HTML に貼り付けてください。",
+                    )
+                  }
+                >
+                  埋め込みコードをコピー
+                </MenuItem>
+              </MenuContent>
+            </Menu>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => copyText(work.source, "コピーしました", "作品のコードをクリップボードに入れました。")}
+            >
               コードをコピー
             </Button>
             {/* /edit はまだ無いので、いまは見た目だけ */}
