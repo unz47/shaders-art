@@ -1,6 +1,8 @@
 // AI と作る(POST /api/ai/edit)の入出力。/edit の AI パネル(ブラウザ)、Route Handler(サーバー)、
 // モック(MSW)で共有する。応答は Server-Sent Events で、返答文を少しずつ流してから最後に提案をまとめて送る。
 
+import { findAiModel } from "./aiModels";
+
 export const AI_PROMPT_MAX = 500;
 /** 編集途中のコードは投稿の上限(4 KB)を超えていることもあるので、余裕を持たせる */
 export const AI_SOURCE_MAX_BYTES = 16 * 1024;
@@ -20,6 +22,17 @@ export interface AiEditRequest {
   source: string;
   prompt: string;
   history?: AiTurnSummary[];
+  /** 使うモデル(lib/aiModels の ID)。無ければサーバーの既定(環境変数 AI_MODEL) */
+  model?: string;
+}
+
+/** 確かめ終わった依頼。model は選ばれていなければ null */
+export type ValidAiEditRequest = Required<Omit<AiEditRequest, "model">> & { model: string | null };
+
+/** 1 回の依頼で使ったトークンの数 */
+export interface AiUsage {
+  inputTokens: number;
+  outputTokens: number;
 }
 
 export type AiEditEvent =
@@ -29,10 +42,18 @@ export type AiEditEvent =
    * 返答の完成形。text の断片とは別に送り直す(途中で別のモデルに切り替わると、断片には
    * 捨てられた出力も混ざるため)。source が null なら、コードの提案が無い返答(質問への回答など)
    */
-  | { type: "done"; reply: string; source: string | null; errors: string[] }
+  | {
+      type: "done";
+      reply: string;
+      source: string | null;
+      errors: string[];
+      /** 答えたモデルと使ったトークンの数(わかれば) */
+      model?: string;
+      usage?: AiUsage;
+    }
   | { type: "error"; message: string };
 
-type Validated = { ok: true; value: Required<AiEditRequest> } | { ok: false; errors: string[] };
+type Validated = { ok: true; value: ValidAiEditRequest } | { ok: false; errors: string[] };
 
 export function validateAiEditRequest(input: unknown): Validated {
   if (typeof input !== "object" || input === null) {
@@ -55,8 +76,15 @@ export function validateAiEditRequest(input: unknown): Validated {
     .slice(-AI_HISTORY_MAX)
     .map((t) => ({ prompt: t.prompt.slice(0, AI_PROMPT_MAX), reply: t.reply.slice(0, AI_REPLY_MAX) }));
 
+  // 選べるのは lib/aiModels の一覧にあるモデルだけ(知らないモデルを呼ばせない)
+  let model: string | null = null;
+  if (raw.model !== undefined && raw.model !== null) {
+    if (typeof raw.model === "string" && findAiModel(raw.model)) model = raw.model;
+    else errors.push("選べないモデルです");
+  }
+
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, value: { source, prompt, history } };
+  return { ok: true, value: { source, prompt, history, model } };
 }
 
 export function encodeSseEvent(event: AiEditEvent): string {
@@ -87,7 +115,7 @@ export function parseSseEvents(buffer: string): { events: AiEditEvent[]; rest: s
 }
 
 export type AiEditResult =
-  | { ok: true; reply: string; source: string | null; errors: string[] }
+  | { ok: true; reply: string; source: string | null; errors: string[]; model: string | null; usage: AiUsage | null }
   | { ok: false; status: number; message: string };
 
 /**
@@ -119,7 +147,10 @@ export async function requestAiEdit(
     buffer = parsed.rest;
     for (const event of parsed.events) {
       if (event.type === "text") onText(event.text);
-      else if (event.type === "done") return { ok: true, reply: event.reply, source: event.source, errors: event.errors };
+      else if (event.type === "done") {
+        const { reply, source, errors, model, usage } = event;
+        return { ok: true, reply, source, errors, model: model ?? null, usage: usage ?? null };
+      }
       else return { ok: false, status: res.status, message: event.message };
     }
   }

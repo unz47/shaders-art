@@ -11,6 +11,17 @@ describe("validateAiEditRequest", () => {
     );
   });
 
+  it("モデルは一覧にあるものだけ通し、無ければ null(サーバーの既定)にする", () => {
+    const chosen = validateAiEditRequest({ source: "x", prompt: "赤くして", model: "qwen.qwen3-coder-30b-a3b-v1:0" });
+    expect(chosen.ok && chosen.value.model).toBe("qwen.qwen3-coder-30b-a3b-v1:0");
+    const none = validateAiEditRequest({ source: "x", prompt: "赤くして" });
+    expect(none.ok && none.value.model).toBeNull();
+    expect(validateAiEditRequest({ source: "x", prompt: "赤くして", model: "anthropic.claude-opus-4-8" })).toEqual({
+      ok: false,
+      errors: ["選べないモデルです"],
+    });
+  });
+
   it.each([
     [null, "本文が JSON オブジェクトではありません"],
     [{ source: "x", prompt: "  " }, "依頼を入力してください"],

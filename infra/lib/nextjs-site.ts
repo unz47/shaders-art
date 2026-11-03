@@ -6,6 +6,7 @@ import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
+import { AI_MODELS } from "../../src/lib/aiModels.ts";
 import type { Auth } from "./auth.ts";
 
 export interface NextjsSiteProps {
@@ -19,7 +20,8 @@ export interface NextjsSiteProps {
   siteUrl?: string;
 }
 
-// AI と作る で使う Bedrock のモデル。リージョンは Lambda と同じ東京。
+// AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
+// 利用者が選べるモデルは src/lib/aiModels.ts の一覧で、Lambda にはその全部の呼び出しを許す。
 // このアカウントでは Bedrock の Claude が使えない制限があるので(解除は AWS サポートに依頼する)、
 // いまはその場で使えて、コードに強い Qwen3 Coder にしている。Claude に戻すときは anthropic.* の ID にする
 // (東京のマントルにある Claude は Opus 4.8 / 4.7 / Haiku 4.5 まで。呼び方の違いは src/lib/server/ai.ts)。
@@ -99,13 +101,16 @@ export class NextjsSite extends Construct {
     if (AI_MODEL.startsWith("anthropic.")) {
       // CreateInference をどのリソースで絞れるかは AWS のドキュメント間で食い違っているので、アクションだけに絞る
       fn.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-mantle:CreateInference"], resources: ["*"] }));
-    } else {
-      fn.addToRolePolicy(
-        new PolicyStatement({
-          actions: ["bedrock:InvokeModelWithResponseStream"],
-          resources: [`arn:aws:bedrock:${Stack.of(this).region}::foundation-model/${AI_MODEL}`],
-        }),
-      );
     }
+    // 利用者が選べるモデル(と既定のモデル)だけを呼べるようにする
+    const converseModels = [...new Set([AI_MODEL, ...AI_MODELS.map((model) => model.id)])].filter(
+      (id) => !id.startsWith("anthropic."),
+    );
+    fn.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["bedrock:InvokeModelWithResponseStream"],
+        resources: converseModels.map((id) => `arn:aws:bedrock:${Stack.of(this).region}::foundation-model/${id}`),
+      }),
+    );
   }
 }
