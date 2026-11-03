@@ -4,6 +4,7 @@ import { Duration, Stack } from "aws-cdk-lib";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
 import { AI_MODELS } from "../../src/lib/aiModels.ts";
@@ -45,6 +46,10 @@ export class NextjsSite extends Construct {
     super(scope, id);
     const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails } = props;
 
+    // SSR Lambda のログ(アクセス解析の "pv" と、AI の原価の "ai-edit" を含む)は 13 か月残す(前年の同じ月と比べられるように)。
+    // 指定しないと Lambda が自動で作るロググループは無期限になる。変えたら利用規約の「利用状況の記録」も直すこと
+    const serverLogs = new LogGroup(this, "ServerLogs", { retention: RetentionDays.THIRTEEN_MONTHS });
+
     const dirname = path.dirname(fileURLToPath(import.meta.url));
     this.nextjs = new Nextjs(this, "Nextjs", {
       // infra/lib -> infra -> リポジトリルート(Next.jsアプリ本体)
@@ -80,6 +85,7 @@ export class NextjsSite extends Construct {
           functionProps: {
             // 既定の 10 秒では AI の返答(考える時間を含む)が間に合わない
             timeout: Duration.minutes(2),
+            logGroup: serverLogs,
           },
         },
         nextjsDistribution: {

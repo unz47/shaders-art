@@ -134,3 +134,50 @@ CloudFront のドメインは作り直さない限り変わらない。独自ド
 
 Cognito の確認メールは既定の送信元(1 日 50 通まで)で送っている。利用者が増えたら SES に切り替える。
 
+## アクセス解析
+
+外部のサービスは使わず、自前で記録する(issue #43。Cookie なし)。ブラウザ(`src/instrumentation-client.ts`)が
+ページを開いた・移ったときにパスと参照元のドメインを `POST /api/pv` に送り、SSR Lambda が CloudWatch Logs に
+`"pv"` の行を出す(`src/lib/server/pageViews.ts`)。
+
+- 記録するもの: パス(クエリと `#` の後ろは除く)、よそのサイトから来たときのドメイン `ref`、言語 `locale`、
+  `device`(mobile / desktop)、訪問者 `visitor`
+- `visitor` は「その月だけの秘密の値 + IP アドレス + User-Agent」のハッシュ。IP アドレスそのものは残さない。
+  秘密の値は作品と同じ表の `pv-salt#2026-11` の行で、月が終わると TTL で消える。なので**訪問者の数は 1 か月の中でしか数えられない**
+  (月をまたいで足したり重ねたりはできない)
+- ブラウザで Global Privacy Control / Do Not Track を選んでいる人と、`NEXT_PUBLIC_API_MOCK=1` のときは送らない
+- SSR Lambda のログは 13 か月で消える(`infra/lib/nextjs-site.ts`)。記録の内容と期間は利用規約の「7. 利用状況の記録」に
+  書いてあるので、変えたらそちらも直す
+
+集計は Logs Insights で(SSR Lambda のロググループ `…ServerLogs…` を選ぶ):
+
+```
+# 日ごとのページビューと訪問者
+filter msg = "pv"
+| stats count(*) as views, count_distinct(visitor) as visitors by bin(1d)
+
+# 月の訪問者(期間をその月の 1 日〜末日にする)
+filter msg = "pv"
+| stats count_distinct(visitor) as visitors
+
+# よく見られているページ
+filter msg = "pv"
+| stats count(*) as views, count_distinct(visitor) as visitors by path
+| sort views desc
+| limit 50
+
+# どこから来たか
+filter msg = "pv" and ispresent(ref)
+| stats count(*) as views, count_distinct(visitor) as visitors by ref
+| sort views desc
+
+# /stage(配信の背景・埋め込み)の使われ方
+filter msg = "pv" and path like /^\/stage/
+| stats count(*) as views, count_distinct(visitor) as visitors by bin(1d)
+
+# 言語と端末
+filter msg = "pv"
+| stats count_distinct(visitor) as visitors by locale, device
+```
+
+`count_distinct` は件数が多いと近似値になる。
