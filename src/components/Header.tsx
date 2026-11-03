@@ -3,9 +3,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Avatar } from "@frost-ui/react/atoms/avatar";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
-import { loginHref, useSession } from "@/lib/useSession";
+import {
+  Menu,
+  MenuContent,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@frost-ui/react/organisms/menu";
+import { avatarBackground, avatarInitial } from "@/lib/avatar";
+import { loginHref, type SessionUser, useSession } from "@/lib/useSession";
 import moonIcon from "@/icons/moon.svg";
 import searchIcon from "@/icons/search.svg";
 
@@ -13,7 +24,8 @@ import searchIcon from "@/icons/search.svg";
 // 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/Submit/テーマ切り替え
 // Rooms は行き先が未設計のため削除。
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
-// Submit(/edit へ)と Sign out を出す。閲覧はログイン不要。
+// Submit(/edit へ)とアバター(押すとメールアドレスと Sign out のメニュー)を出す。
+// Sign in とアバターは一番右に置く。閲覧はログイン不要。
 export function Header({ showSearch = true, showSubmit = true }: { showSearch?: boolean; showSubmit?: boolean }) {
   // 作品詳細ページ(/s/...)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
@@ -72,26 +84,10 @@ export function Header({ showSearch = true, showSubmit = true }: { showSearch?: 
             <span className="text-sm text-text-muted">Search works…</span>
           </div>
         )}
-        {session.status === "ready" && session.user && (
-          <>
-            {showSubmit && (
-              <Link href="/edit" className={buttonVariants({ variant: "primary", size: "sm" })}>
-                Submit
-              </Link>
-            )}
-            {/* ログアウトは POST(GET だとプリフェッチなどで勝手に発火しうる) */}
-            <form action="/api/auth/logout" method="post">
-              <button type="submit" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-                Sign out
-              </button>
-            </form>
-          </>
-        )}
-        {session.status === "ready" && session.configured && !session.user && (
-          // Route Handler へのフルページ遷移なので <Link> ではなく <a>
-          <a href={loginHref(pathname)} className={buttonVariants({ variant: "primary", size: "sm" })}>
-            Sign in
-          </a>
+        {showSubmit && session.status === "ready" && session.user && (
+          <Link href="/edit" className={buttonVariants({ variant: "primary", size: "sm" })}>
+            Submit
+          </Link>
         )}
         <button
           onClick={toggleTheme}
@@ -103,7 +99,49 @@ export function Header({ showSearch = true, showSubmit = true }: { showSearch?: 
         >
           <Image src={moonIcon} alt="ダークモード切り替え" width={16} height={16} />
         </button>
+        {session.status === "ready" && session.user && <AccountMenu user={session.user} />}
+        {session.status === "ready" && session.configured && !session.user && (
+          // Route Handler へのフルページ遷移なので <Link> ではなく <a>
+          <a href={loginHref(pathname)} className={buttonVariants({ variant: "primary", size: "sm" })}>
+            Sign in
+          </a>
+        )}
       </div>
     </header>
+  );
+}
+
+function AccountMenu({ user }: { user: SessionUser }) {
+  // ログアウトは POST(GET だとプリフェッチなどで勝手に発火しうる)。メニューの中身は
+  // ポップアップとして別の場所に描かれるので、フォームはメニューの外に置いて送る
+  const logoutForm = useRef<HTMLFormElement>(null);
+
+  return (
+    <>
+      <form ref={logoutForm} action="/api/auth/logout" method="post" hidden />
+      <Menu>
+        <MenuTrigger
+          aria-label="アカウント"
+          className="rounded-full transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-default"
+        >
+          <Avatar
+            size="sm"
+            fallback={avatarInitial(user.email)}
+            className="text-white"
+            style={{ backgroundImage: avatarBackground(user.email) }}
+          />
+        </MenuTrigger>
+        <MenuContent align="end">
+          <MenuGroup>
+            <MenuGroupLabel>ログイン中</MenuGroupLabel>
+            <div className="max-w-64 truncate px-sp-sm pb-sp-xs text-sm text-text-primary">
+              {user.email ?? "メールアドレス未設定"}
+            </div>
+          </MenuGroup>
+          <MenuSeparator />
+          <MenuItem onClick={() => logoutForm.current?.requestSubmit()}>Sign out</MenuItem>
+        </MenuContent>
+      </Menu>
+    </>
   );
 }
