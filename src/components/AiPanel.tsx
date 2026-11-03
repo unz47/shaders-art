@@ -14,7 +14,7 @@ import {
   type AiUsage,
 } from "@/lib/aiEdit";
 import { AI_MODELS, DEFAULT_AI_MODEL_ID, findAiModel, priceTier } from "@/lib/aiModels";
-import { type AiUsageStatus, quotaBlock } from "@/lib/aiQuota";
+import { type AiUsageStatus, quotaBlock, quotaMessage } from "@/lib/aiQuota";
 import { useI18n } from "@/lib/i18n/client";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
@@ -308,15 +308,7 @@ export function AiPanel({
           {/* 上限に達したときだけ、理由といつ戻るかを 1 行で出す(欄の高さを普段は変えない) */}
           {usage && blocked && (
             <p role="status" className="text-xs text-danger-solid">
-              {blocked === "monthly"
-                ? t.ai.quotaMonthly(
-                    new Date(usage.monthResetsAt).toLocaleDateString(t.time.intl, {
-                      timeZone: "Asia/Tokyo",
-                      month: "long",
-                      day: "numeric",
-                    }),
-                  )
-                : t.ai.quotaDaily}
+              {quotaMessage(blocked, usage, t)}
             </p>
           )}
           <div className="flex items-center justify-between gap-2">

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aiCostUsd, type AiUsageStatus, creditsForCost, quotaBlock, usagePeriods } from "./aiQuota";
+import { aiCostUsd, type AiUsageStatus, creditsForCost, quotaBlock, quotaMessage, usagePeriods } from "./aiQuota";
+import { dictionaryFor } from "./i18n";
 
 describe("aiCostUsd / creditsForCost", () => {
   it("原価はモデルの値段とトークンの数から出す", () => {
@@ -36,11 +37,12 @@ describe("usagePeriods", () => {
 });
 
 describe("quotaBlock", () => {
-  const status = (credits: number, requests: number, unlimited = false): AiUsageStatus => ({
+  const status = (credits: number, requests: number, unlimited = false, freePoolExhausted = false): AiUsageStatus => ({
     credits: { used: credits, limit: 40 },
     requestsToday: { used: requests, limit: 20 },
     unlimited,
-    monthResetsAt: "",
+    freePoolExhausted,
+    monthResetsAt: "2026-11-30T15:00:00.000Z",
     dayResetsAt: "",
   });
 
@@ -50,7 +52,16 @@ describe("quotaBlock", () => {
     expect(quotaBlock(status(0, 20))).toBe("daily");
   });
 
+  it("無料の人全体の上限に達したら、1 人あたりの残りがあっても止める", () => {
+    expect(quotaBlock(status(0, 0, false, true))).toBe("pool");
+  });
+
   it("上限なしの人は止めない", () => {
     expect(quotaBlock(status(999, 999, true))).toBeNull();
+  });
+
+  it("止まった理由と、いつ戻るか(日本時間の 12 月 1 日)を出す", () => {
+    expect(quotaMessage("pool", status(0, 0, false, true), dictionaryFor("ja"))).toContain("12月1日");
+    expect(quotaMessage("monthly", status(40, 0), dictionaryFor("en"))).toContain("December 1");
   });
 });

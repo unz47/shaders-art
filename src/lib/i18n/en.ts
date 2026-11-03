@@ -232,6 +232,7 @@ export const en: Dictionary = {
     creditsHint: "Credits go down by what each request costs (about 1 for Qwen3 Coder, 2–14 for Claude Sonnet 4.6)",
     quotaMonthly: (date: string) => `You’ve reached this month’s AI limit. It resets on ${date}`,
     quotaDaily: "You’ve reached today’s AI request limit. You can use it again tomorrow",
+    quotaPool: (date: string) => `This month’s free AI allowance (shared by everyone) has run out. It resets on ${date}`,
     replyLanguage: "English",
   },
   api: {

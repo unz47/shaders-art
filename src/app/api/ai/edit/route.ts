@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
 import type { Dictionary } from "@/lib/i18n";
 import { getDictionary } from "@/lib/i18n/server";
-import { aiCostUsd, creditsForCost, quotaBlock } from "@/lib/aiQuota";
+import { aiCostUsd, creditsForCost, quotaBlock, quotaMessage } from "@/lib/aiQuota";
 import { availableModels, getAiConfig, runAiEdit } from "@/lib/server/ai";
 import { getAiLimits, getAiUsage, recordAiCost, recordAiRequest } from "@/lib/server/aiUsage";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
@@ -15,7 +15,7 @@ import { getSession, isSameOriginRequest } from "@/lib/server/session";
 // 返答を少しずつ返すため、Lambda の応答はストリーミングにしてある(infra/lib/nextjs-site.ts)。
 // CloudFront はオリジンから 30 秒何も届かないと接続を切るが、モデルが考えている間は文字が
 // 出てこないので、そのあいだも ping を送り続ける。
-// クレジット(利用者課金)はまだ無い。呼び出しの量は usage をログに出して見ておく。
+// 1 人あたり・無料の人全体の上限と使用量の記録は lib/server/aiUsage(issue #43)。
 
 const KEEPALIVE_MS = 10_000;
 
@@ -44,16 +44,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: t.ai.modelUnavailable }, { status: 400 });
   }
 
-  // 1 人あたりの上限(issue #43)。達していたら依頼を受けない。使用量を読めないときも、原価を守るため受けない
+  // 1 人あたりの上限と、無料の人全体の上限(issue #43)。達していたら依頼を受けない。
+  // 使用量を読めないときも、原価を守るため受けない
   const now = new Date();
+  let free: boolean;
   try {
     const usage = await getAiUsage(session, getAiLimits(), now);
     const blocked = quotaBlock(usage);
     if (blocked) {
-      const message = blocked === "monthly" ? t.ai.quotaMonthly(resetDate(usage.monthResetsAt, t)) : t.ai.quotaDaily;
-      return NextResponse.json({ message, quota: blocked }, { status: 429 });
+      // どれくらい断っているか(上限が厳しすぎないか)を Logs Insights で見られるようにする
+      console.log(JSON.stringify({ msg: "ai-blocked", user: session.sub, reason: blocked }));
+      return NextResponse.json({ message: quotaMessage(blocked, usage, t), quota: blocked }, { status: 429 });
     }
-    await recordAiRequest(session.sub, now);
+    free = !usage.unlimited;
+    await recordAiRequest(session.sub, now, free);
   } catch (error) {
     console.error("[ai/edit] usage", error);
     return NextResponse.json({ message: t.ai.unexpected }, { status: 503 });
@@ -85,7 +89,7 @@ export async function POST(request: NextRequest) {
         const costUsd = outcome.tokens ? aiCostUsd(outcome.model, outcome.tokens) : null;
         const credits = costUsd === null ? 0 : creditsForCost(costUsd);
         if (costUsd !== null) {
-          await recordAiCost(session.sub, now, { credits, costUsd }).catch((error: unknown) =>
+          await recordAiCost(session.sub, now, free, { credits, costUsd }).catch((error: unknown) =>
             console.error("[ai/edit] usage", error),
           );
         }
@@ -129,11 +133,6 @@ export async function POST(request: NextRequest) {
       "Cache-Control": "private, no-store",
     },
   });
-}
-
-/** 上限が戻る日(日本時間)を、画面の言語で */
-function resetDate(iso: string, t: Dictionary): string {
-  return new Date(iso).toLocaleDateString(t.time.intl, { timeZone: "Asia/Tokyo", month: "long", day: "numeric" });
 }
 
 function errorMessage(error: unknown, t: Dictionary): string {

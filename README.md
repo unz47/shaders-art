@@ -89,21 +89,34 @@ Claude(Haiku 5.5 / Sonnet 5.5 / Opus 5.5)は、Bedrock ではなく **Claude Pla
 クレジットは実際の原価で減る(1 クレジット = 原価 ¥0.5 相当。1 ドル = 150 円で換算。`src/lib/aiQuota.ts`)。
 Qwen3 Coder ならおよそ 1 回 1、Claude Sonnet 4.6 なら 2〜14。途中で切れた・断られた依頼も、使ったトークンの分は数える。
 
+これとは別に、**無料の人全体の原価が月 ¥3,000** に達したら、その月は無料の人の AI を止める(運営は使える)。
+人が急に増えたり、アカウントを大量に作られたりしても、運営の負担がこの額で止まる。同時に頼まれると少し超えることがある。
+
 | 環境変数 | 意味 |
 |---|---|
-| `AI_MONTHLY_CREDITS` / `AI_DAILY_REQUESTS` | 上限を変える(既定 40 / 20) |
+| `AI_MONTHLY_CREDITS` / `AI_DAILY_REQUESTS` | 1 人あたりの上限を変える(既定 40 / 20) |
+| `AI_FREE_MONTHLY_BUDGET_YEN` | 無料の人全体の、1 か月の原価の上限(円。既定 3000) |
 | `AI_UNLIMITED_EMAILS` | 上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する |
 
 本番では `pnpm cdk deploy --all -c aiUnlimitedEmails=you@example.com` で渡す(公開リポジトリなので cdk.json には書かない)。
 ローカルで開発中に上限に当たらないよう、`.env.local` にも `AI_UNLIMITED_EMAILS` を入れておく。
+`pnpm dev` も本番と同じ表を使うので、入れておかないと開発中の依頼が本番の「無料の人全体」の合計に入る。
 
 使用量は作品と同じ DynamoDB の表に、ユーザーごと・月ごと(`ai-usage#<ユーザー ID>#2026-11`)・日ごと(`…#2026-11-01`)の行として残る
 (依頼の回数 `requests`・クレジット `credits`・原価 `costMicroUsd`。古い行は TTL `expiresAt` で消える)。
+無料の人全体の合計は `ai-usage#free#2026-11` の行。
 依頼ごとの原価は CloudWatch Logs にも出るので、Logs Insights で集計できる(SSR Lambda のロググループで):
 
 ```
 filter msg = "ai-edit"
 | stats count(*) as requests, sum(costUsd) as usd, sum(credits) as credits by bin(1d), model
+```
+
+上限で断った回数は `"ai-blocked"`(`reason` は `monthly` / `daily` / `pool`)。
+
+```
+filter msg = "ai-blocked"
+| stats count(*) as blocked, count_distinct(user) as users by bin(1d), reason
 ```
 
 ## デプロイ

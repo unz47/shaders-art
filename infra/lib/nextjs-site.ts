@@ -77,7 +77,8 @@ export class NextjsSite extends Construct {
         ...(siteUrl ? { SITE_URL: siteUrl } : {}),
         AI_MODEL,
         ...(claudeWorkspaceId ? { ANTHROPIC_AWS_WORKSPACE_ID: claudeWorkspaceId } : {}),
-        // AI の 1 人あたりの上限は既定(月 40 クレジット・1 日 20 回)のまま。変えるなら AI_MONTHLY_CREDITS / AI_DAILY_REQUESTS
+        // AI の上限は既定(1 人あたり月 40 クレジット・1 日 20 回、無料の人全体で月 ¥3,000)のまま。
+        // 変えるなら AI_MONTHLY_CREDITS / AI_DAILY_REQUESTS / AI_FREE_MONTHLY_BUDGET_YEN
         ...(aiUnlimitedEmails ? { AI_UNLIMITED_EMAILS: aiUnlimitedEmails } : {}),
       },
       overrides: {

@@ -57,6 +57,7 @@ export const aiUsage = http.get("/api/ai/usage", () => {
     credits: { used: 12, limit: DEFAULT_MONTHLY_CREDITS },
     requestsToday: { used: 3, limit: DEFAULT_DAILY_REQUESTS },
     unlimited: false,
+    freePoolExhausted: false,
     monthResetsAt: periods.monthResetsAt,
     dayResetsAt: periods.dayResetsAt,
   } satisfies AiUsageStatus);

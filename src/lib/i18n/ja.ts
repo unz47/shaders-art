@@ -234,6 +234,7 @@ export const ja = {
     creditsHint: "クレジットは使った分だけ減ります(Qwen3 Coder ならおよそ 1 回 1、Claude Sonnet 4.6 なら 2〜14)",
     quotaMonthly: (date: string) => `今月の AI の上限に達しました。${date}にまた使えるようになります`,
     quotaDaily: "今日の AI の上限(回数)に達しました。明日また使えます",
+    quotaPool: (date: string) => `今月の無料の AI の枠(全員の合計)がなくなりました。${date}にまた使えるようになります`,
     /** AI への指示で、説明文の言語(依頼の言語が分からないとき)に使う */
     replyLanguage: "Japanese",
   },
