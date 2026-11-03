@@ -83,6 +83,45 @@ Claude(Haiku 5.5 / Sonnet 5.5 / Opus 5.5)は、Bedrock ではなく **Claude Pla
 `AI_MODEL` が無いときは「AI はまだ設定されていません」と返る。`NEXT_PUBLIC_API_MOCK=1` なら AI もモック
 (依頼文をコメントとして足すだけの提案)になる。
 
+#### AI の使用量と上限
+
+1 人あたり **月 40 クレジット**と **1 日 20 回**まで(issue #43。日本時間の月初・0 時に戻る)。
+クレジットは実際の原価で減る(1 クレジット = 原価 ¥0.5 相当。1 ドル = 150 円で換算。`src/lib/aiQuota.ts`)。
+Qwen3 Coder ならおよそ 1 回 1、Claude Sonnet 4.6 なら 2〜14。途中で切れた・断られた依頼も、使ったトークンの分は数える。
+利用者が途中で止めた依頼は、使ったトークンの数が届かないので、多めに見積もった分を数える(最初の反応からの時間 × 1 秒 100 トークン)。
+モデルから最初の反応が 10 秒来なければ「混み合っています」で諦める(原価はかからないとみなし、回数だけ数える)。
+
+これとは別に、**無料の人全体の原価が月 ¥3,000** に達したら、その月は無料の人の AI を止める(運営は使える)。
+人が急に増えたり、アカウントを大量に作られたりしても、運営の負担がこの額で止まる。同時に頼まれると少し超えることがある。
+
+| 環境変数 | 意味 |
+|---|---|
+| `AI_MONTHLY_CREDITS` / `AI_DAILY_REQUESTS` | 1 人あたりの上限を変える(既定 40 / 20) |
+| `AI_FREE_MONTHLY_BUDGET_YEN` | 無料の人全体の、1 か月の原価の上限(円。既定 3000) |
+| `AI_UNLIMITED_EMAILS` | 上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する |
+
+本番では `pnpm cdk deploy --all -c aiUnlimitedEmails=you@example.com` で渡す(公開リポジトリなので cdk.json には書かない)。
+ローカルで開発中に上限に当たらないよう、`.env.local` にも `AI_UNLIMITED_EMAILS` を入れておく。
+`pnpm dev` も本番と同じ表を使うので、入れておかないと開発中の依頼が本番の「無料の人全体」の合計に入る。
+
+使用量は作品と同じ DynamoDB の表に、ユーザーごと・月ごと(`ai-usage#<ユーザー ID>#2026-11`)・日ごと(`…#2026-11-01`)の行として残る
+(依頼の回数 `requests`・クレジット `credits`・原価 `costMicroUsd`。古い行は TTL `expiresAt` で消える)。
+無料の人全体の合計は `ai-usage#free#2026-11` の行。
+依頼ごとの原価は CloudWatch Logs にも出るので、Logs Insights で集計できる(SSR Lambda のロググループで):
+
+```
+filter msg = "ai-edit"
+| stats count(*) as requests, sum(costUsd) as usd, sum(credits) as credits by bin(1d), model
+```
+
+上限で断った回数は `"ai-blocked"`(`reason` は `monthly` / `daily` / `pool`)、モデルが反応しなかった回数は `"ai-timeout"`。
+途中で止めた依頼は `"ai-edit"` の `stop` が `aborted` で、`estimated` に見積もったトークンの数が入る。
+
+```
+filter msg = "ai-blocked"
+| stats count(*) as blocked, count_distinct(user) as users by bin(1d), reason
+```
+
 ## デプロイ
 
 ```sh
@@ -110,3 +149,51 @@ Cognito のコールバック URL には本番のオリジンが要るが、Clou
 CloudFront のドメインは作り直さない限り変わらない。独自ドメインを当てたら `siteUrl` をそれに差し替える。
 
 Cognito の確認メールは既定の送信元(1 日 50 通まで)で送っている。利用者が増えたら SES に切り替える。
+
+## アクセス解析
+
+外部のサービスは使わず、自前で記録する(issue #43。Cookie なし)。ブラウザ(`src/instrumentation-client.ts`)が
+ページを開いた・移ったときにパスと参照元のドメインを `POST /api/pv` に送り、SSR Lambda が CloudWatch Logs に
+`"pv"` の行を出す(`src/lib/server/pageViews.ts`)。
+
+- 記録するもの: パス(クエリと `#` の後ろは除く)、よそのサイトから来たときのドメイン `ref`、言語 `locale`、
+  `device`(mobile / desktop)、訪問者 `visitor`
+- `visitor` は「その月だけの秘密の値 + IP アドレス + User-Agent」のハッシュ。IP アドレスそのものは残さない。
+  秘密の値は作品と同じ表の `pv-salt#2026-11` の行で、月が終わると TTL で消える。なので**訪問者の数は 1 か月の中でしか数えられない**
+  (月をまたいで足したり重ねたりはできない)
+- ブラウザで Global Privacy Control / Do Not Track を選んでいる人と、`NEXT_PUBLIC_API_MOCK=1` のときは送らない
+- SSR Lambda のログは 13 か月で消える(`infra/lib/nextjs-site.ts`)。記録の内容と期間は利用規約の「7. 利用状況の記録」に
+  書いてあるので、変えたらそちらも直す
+
+集計は Logs Insights で(SSR Lambda のロググループ `…ServerLogs…` を選ぶ):
+
+```
+# 日ごとのページビューと訪問者
+filter msg = "pv"
+| stats count(*) as views, count_distinct(visitor) as visitors by bin(1d)
+
+# 月の訪問者(期間をその月の 1 日〜末日にする)
+filter msg = "pv"
+| stats count_distinct(visitor) as visitors
+
+# よく見られているページ
+filter msg = "pv"
+| stats count(*) as views, count_distinct(visitor) as visitors by path
+| sort views desc
+| limit 50
+
+# どこから来たか
+filter msg = "pv" and ispresent(ref)
+| stats count(*) as views, count_distinct(visitor) as visitors by ref
+| sort views desc
+
+# /stage(配信の背景・埋め込み)の使われ方
+filter msg = "pv" and path like /^\/stage/
+| stats count(*) as views, count_distinct(visitor) as visitors by bin(1d)
+
+# 言語と端末
+filter msg = "pv"
+| stats count_distinct(visitor) as visitors by locale, device
+```
+
+`count_distinct` は件数が多いと近似値になる。

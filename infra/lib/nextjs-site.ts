@@ -4,6 +4,7 @@ import { Duration, Stack } from "aws-cdk-lib";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
 import { AI_MODELS } from "../../src/lib/aiModels.ts";
@@ -20,6 +21,8 @@ export interface NextjsSiteProps {
   siteUrl?: string;
   /** Claude Platform on AWS のワークスペース ID(wrkspc_…、東京に作ったもの)。無ければ Claude は選べない */
   claudeWorkspaceId?: string;
+  /** AI を上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する(src/lib/server/aiUsage) */
+  aiUnlimitedEmails?: string;
 }
 
 // AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
@@ -41,7 +44,11 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails } = props;
+
+    // SSR Lambda のログ(アクセス解析の "pv" と、AI の原価の "ai-edit" を含む)は 13 か月残す(前年の同じ月と比べられるように)。
+    // 指定しないと Lambda が自動で作るロググループは無期限になる。変えたら利用規約の「利用状況の記録」も直すこと
+    const serverLogs = new LogGroup(this, "ServerLogs", { retention: RetentionDays.THIRTEEN_MONTHS });
 
     const dirname = path.dirname(fileURLToPath(import.meta.url));
     this.nextjs = new Nextjs(this, "Nextjs", {
@@ -70,12 +77,16 @@ export class NextjsSite extends Construct {
         ...(siteUrl ? { SITE_URL: siteUrl } : {}),
         AI_MODEL,
         ...(claudeWorkspaceId ? { ANTHROPIC_AWS_WORKSPACE_ID: claudeWorkspaceId } : {}),
+        // AI の上限は既定(1 人あたり月 40 クレジット・1 日 20 回、無料の人全体で月 ¥3,000)のまま。
+        // 変えるなら AI_MONTHLY_CREDITS / AI_DAILY_REQUESTS / AI_FREE_MONTHLY_BUDGET_YEN
+        ...(aiUnlimitedEmails ? { AI_UNLIMITED_EMAILS: aiUnlimitedEmails } : {}),
       },
       overrides: {
         nextjsServer: {
           functionProps: {
             // 既定の 10 秒では AI の返答(考える時間を含む)が間に合わない
             timeout: Duration.minutes(2),
+            logGroup: serverLogs,
           },
         },
         nextjsDistribution: {

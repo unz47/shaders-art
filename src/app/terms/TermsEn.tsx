@@ -4,7 +4,7 @@ import { ExternalLink, H3, List, P, Section } from "./parts";
 // 利用規約の英語版。日本語版(TermsJa)の翻訳で、食い違うときは日本語版が優先する(冒頭にもそう書く)。
 // 日本語版を変えたら、こちらも合わせて変えること。
 
-const UPDATED = "October 24, 2026";
+const UPDATED = "November 3, 2026";
 
 /** クリエイティブ・コモンズの説明ページ(英語) */
 const cc = (id: LicenseId) => licenseUrl(findLicense(id)!, "en");
@@ -136,7 +136,30 @@ export function TermsEn() {
         </List>
       </Section>
 
-      <Section title="7. Disclaimer">
+      <Section id="records" title="7. Usage records">
+        <P>To improve the Service, the operator records the following.</P>
+        <List>
+          <li>
+            The path of each page you open, the domain of the site you came from (if you came from another site), the
+            display language, and whether you use a smartphone. The query part of the URL (such as search terms) and
+            the part after # (such as draft code) are not recorded.
+          </li>
+          <li>
+            A value used to count visits by the same person: a hash of your IP address and browser information
+            (User-Agent) combined with a secret value that is replaced every month. Your IP address itself is not
+            recorded. The secret value is deleted when the month ends, so the records cannot be traced back to a person
+            or linked across months.
+          </li>
+          <li>For Make with AI, the number of requests and the credits used by each account (to manage usage limits).</li>
+        </List>
+        <P>
+          These records do not use cookies. If your browser is set not to be tracked (Global Privacy Control or Do Not
+          Track), page records are not sent. Only the operator uses these records; they are not used for advertising
+          or provided to third parties. Records are deleted after about 13 months.
+        </P>
+      </Section>
+
+      <Section title="8. Disclaimer">
         <List>
           <li>
             The Service is provided as is. The operator does not guarantee that the Service will run without
@@ -146,14 +169,14 @@ export function TermsEn() {
         </List>
       </Section>
 
-      <Section title="8. Changes to these Terms">
+      <Section title="9. Changes to these Terms">
         <P>
           The operator may change these Terms as needed. The revised Terms take effect when they are posted on the
           Service.
         </P>
       </Section>
 
-      <Section title="9. Governing law">
+      <Section title="10. Governing law">
         <P>These Terms are governed by and interpreted under the laws of Japan.</P>
       </Section>
     </>

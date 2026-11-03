@@ -132,10 +132,112 @@ export interface AiEditOutcome {
   model: string;
   stopReason: string | null;
   usage: unknown;
+  /**
+   * 使ったトークンの数(使用量の上限の計算用)。途中で切れた・断られたときも、使った分は数える。
+   * 分からなければ null
+   */
+  tokens: AiUsage | null;
 }
 
 /**
- * 依頼を 1 回投げる。返答文は届くたびに onText に渡す。止めたいときは signal を abort する。
+ * モデルから最初の反応(ストリームの最初のイベント)がこの時間来なければ、混み合っているとみなして諦める。
+ * 普段は 1〜3 秒で来る。モデルが止まっているとき(2026-11 に Qwen3 Coder 480B で起きた)に、
+ * 何も出ないまま Lambda の時間切れ(2 分)まで待たせないため
+ */
+export const FIRST_RESPONSE_TIMEOUT_MS = 10_000;
+
+/** 途中で止めた依頼の出力を見積もる速さ(1 秒あたりのトークン)。実際(60〜150)より多めに見る */
+const ESTIMATED_OUTPUT_TOKENS_PER_SECOND = 100;
+
+/** 最初の反応が FIRST_RESPONSE_TIMEOUT_MS のあいだ来なかった。原価はかかっていないとみなす */
+export class AiFirstResponseTimeoutError extends Error {
+  constructor(readonly model: string) {
+    super(`${model} から ${FIRST_RESPONSE_TIMEOUT_MS / 1000} 秒反応が無かった`);
+    this.name = "AiFirstResponseTimeoutError";
+  }
+}
+
+/** 利用者が途中で止めた(接続を切った)。使ったトークンの数は届かないので、見積もりを持つ */
+export class AiAbortedError extends Error {
+  constructor(
+    readonly model: string,
+    readonly estimatedTokens: AiUsage,
+  ) {
+    super(`${model} への依頼が途中で止められた`);
+    this.name = "AiAbortedError";
+  }
+}
+
+/**
+ * 途中で止めた依頼のトークン数の見積もり。止め続けて上限をすり抜けられないよう、多めに見る。
+ * 入力は、分かればその数(Claude は最初のイベントで分かる)、分からなければ文字数 ÷ 3。
+ * 出力は、最初の反応から止めるまでの時間 × 1 秒 100(考えている途中の、見えない出力も含めるため時間で見る)
+ */
+export function estimateAbortedTokens({
+  inputChars,
+  inputTokens,
+  firstResponseAt,
+  abortedAt,
+}: {
+  inputChars: number;
+  inputTokens: number | null;
+  firstResponseAt: number | null;
+  abortedAt: number;
+}): AiUsage {
+  const seconds = firstResponseAt === null ? 0 : Math.max(0, (abortedAt - firstResponseAt) / 1000);
+  return {
+    inputTokens: inputTokens ?? Math.ceil(inputChars / 3),
+    outputTokens: Math.min(MAX_TOKENS, Math.ceil(seconds * ESTIMATED_OUTPUT_TOKENS_PER_SECOND)),
+  };
+}
+
+/** モデルの呼び出しが、ストリームのイベントを受け取るたびに呼ぶ。入力のトークン数が分かれば渡す */
+type OnStreamEvent = (inputTokens?: number) => void;
+
+/**
+ * 1 回の依頼を見張る。最初の反応が timeoutMs 来なければ止めて AiFirstResponseTimeoutError にし、
+ * 呼び出し元が止めたら(ブラウザが接続を切った)AiAbortedError にする
+ */
+export async function watchAiRequest<T>(
+  {
+    signal,
+    model,
+    inputChars,
+    timeoutMs = FIRST_RESPONSE_TIMEOUT_MS,
+  }: { signal: AbortSignal; model: string; inputChars: number; timeoutMs?: number },
+  run: (signal: AbortSignal, onEvent: OnStreamEvent) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const stopByCaller = () => controller.abort(signal.reason);
+  if (signal.aborted) stopByCaller();
+  else signal.addEventListener("abort", stopByCaller, { once: true });
+  const timeout = new AiFirstResponseTimeoutError(model);
+  const timer = setTimeout(() => controller.abort(timeout), timeoutMs);
+  const seen = { firstResponseAt: null as number | null, inputTokens: null as number | null };
+  const onEvent: OnStreamEvent = (inputTokens) => {
+    if (seen.firstResponseAt === null) {
+      seen.firstResponseAt = Date.now();
+      clearTimeout(timer);
+    }
+    if (inputTokens !== undefined) seen.inputTokens = inputTokens;
+  };
+  try {
+    return await run(controller.signal, onEvent);
+  } catch (error) {
+    if (controller.signal.reason === timeout) throw timeout;
+    if (signal.aborted) {
+      throw new AiAbortedError(model, estimateAbortedTokens({ inputChars, ...seen, abortedAt: Date.now() }));
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", stopByCaller);
+  }
+}
+
+/**
+ * 依頼を 1 回投げる。返答文は届くたびに onText に渡す。止めたいときは signal を abort する
+ * (止めたら AiAbortedError。最初の反応が来なければ AiFirstResponseTimeoutError)。
  * t は依頼の言語の文言(エラーと静的チェックの文、AI の説明文の言語の目安に使う)
  */
 export function runAiEdit(
@@ -143,9 +245,20 @@ export function runAiEdit(
   request: ValidAiEditRequest,
   { onText, signal, t }: { onText: (text: string) => void; signal: AbortSignal; t: Dictionary },
 ): Promise<AiEditOutcome> {
-  return usesMessagesApi(cfg.model)
-    ? runClaude(cfg, request, onText, signal, t)
-    : runConverse(cfg, request, onText, signal, t);
+  const claude = usesMessagesApi(cfg.model);
+  const inputChars = (claude ? systemPrompt(t) : systemPromptCodeBlock(t)).length + buildUserMessage(request).length;
+  return watchAiRequest({ signal, model: cfg.model, inputChars }, (watched, onEvent) =>
+    claude
+      ? runClaude(cfg, request, { onText, onEvent, signal: watched, t })
+      : runConverse(cfg, request, { onText, onEvent, signal: watched, t }),
+  );
+}
+
+interface RunOptions {
+  onText: (text: string) => void;
+  onEvent: OnStreamEvent;
+  signal: AbortSignal;
+  t: Dictionary;
 }
 
 // ---- Claude(Messages API。Claude Platform on AWS か、Bedrock の InvokeModel か bedrock-mantle)----
@@ -178,9 +291,7 @@ let cachedInvoke: AnthropicBedrock | undefined;
 async function runClaude(
   cfg: AiConfig,
   request: ValidAiEditRequest,
-  onText: (text: string) => void,
-  signal: AbortSignal,
-  t: Dictionary,
+  { onText, onEvent, signal, t }: RunOptions,
 ): Promise<AiEditOutcome> {
   const params = {
     model: cfg.model,
@@ -192,6 +303,7 @@ async function runClaude(
   } satisfies Anthropic.Beta.MessageCreateParamsNonStreaming;
   const via = findAiModel(cfg.model)?.via;
   const stream = messagesStream(cfg, via, params, signal);
+  stream.on("streamEvent", (event) => onEvent(event.type === "message_start" ? event.message.usage.input_tokens : undefined));
   stream.on("text", onText);
   const message = await stream.finalMessage();
   // InvokeModel の応答の model は推論プロファイルの接頭辞(jp.)が外れた ID なので、選ばれた ID で返す
@@ -202,6 +314,7 @@ async function runClaude(
     model,
     stopReason: message.stop_reason,
     usage: message.usage,
+    tokens: usage,
   };
 }
 
@@ -246,9 +359,7 @@ let cachedRuntime: BedrockRuntimeClient | undefined;
 async function runConverse(
   cfg: AiConfig,
   request: ValidAiEditRequest,
-  onText: (text: string) => void,
-  signal: AbortSignal,
-  t: Dictionary,
+  { onText, onEvent, signal, t }: RunOptions,
 ): Promise<AiEditOutcome> {
   cachedRuntime ??= new BedrockRuntimeClient({});
   const response = await cachedRuntime.send(
@@ -266,6 +377,7 @@ async function runConverse(
   let stopReason: string | null = null;
   let usage: { inputTokens?: number; outputTokens?: number } | null = null;
   for await (const event of response.stream ?? []) {
+    onEvent();
     // 考えている途中(reasoningContent)は表示しない
     const delta = event.contentBlockDelta?.delta?.text;
     if (delta) {
@@ -281,16 +393,22 @@ async function runConverse(
     if (event.metadata) usage = event.metadata.usage ?? null;
   }
 
+  const tokens = usage && { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 };
   if (stopReason === "max_tokens") {
-    return { event: { type: "error", message: t.ai.truncated }, model: cfg.model, stopReason, usage };
+    return { event: { type: "error", message: t.ai.truncated }, model: cfg.model, stopReason, usage, tokens };
   }
   if (stopReason === "content_filtered" || stopReason === "guardrail_intervened") {
     const event: AiEditEvent = { type: "error", message: t.ai.refused };
-    return { event, model: cfg.model, stopReason, usage };
+    return { event, model: cfg.model, stopReason, usage, tokens };
   }
   const { reply, source } = parseCodeBlockReply(text);
-  const tokens = usage && { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 };
-  return { event: withUsage(doneEvent(reply, source, t), cfg.model, tokens), model: cfg.model, stopReason, usage };
+  return {
+    event: withUsage(doneEvent(reply, source, t), cfg.model, tokens),
+    model: cfg.model,
+    stopReason,
+    usage,
+    tokens,
+  };
 }
 
 const FENCE = "```";

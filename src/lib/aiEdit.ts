@@ -2,6 +2,7 @@
 // モック(MSW)で共有する。応答は Server-Sent Events で、返答文を少しずつ流してから最後に提案をまとめて送る。
 
 import { findAiModel } from "./aiModels";
+import type { AiUsageStatus } from "./aiQuota";
 import type { Dictionary } from "./i18n";
 import { SIZE_BUDGET_BYTES } from "./submission";
 
@@ -123,6 +124,17 @@ export async function getAvailableAiModels(): Promise<string[] | null> {
     const res = await fetch("/api/ai/models", { cache: "no-store" });
     if (!res.ok) return null;
     return ((await res.json()) as { models: string[] }).models;
+  } catch {
+    return null;
+  }
+}
+
+/** 今月のクレジットと今日の依頼の回数(要ログイン)。取れなければ null(残りを出さないだけ。上限はサーバーが守る) */
+export async function getAiUsageStatus(): Promise<AiUsageStatus | null> {
+  try {
+    const res = await fetch("/api/ai/usage", { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as AiUsageStatus;
   } catch {
     return null;
   }
