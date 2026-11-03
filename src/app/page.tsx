@@ -17,7 +17,7 @@ export default function Home() {
   return (
     <div className="flex min-h-dvh flex-col">
       <Header />
-      <main className="grid flex-1 grid-cols-1 content-start gap-sp-lg px-sp-xl pb-sp-md pt-8 sm:grid-cols-2 lg:grid-cols-3">
+      <main className="grid flex-1 grid-cols-1 content-start gap-x-sp-lg gap-y-8 px-sp-xl pb-sp-md pt-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {works.map((work) => (
           <WorkCard key={work.slug} work={work} />
         ))}
