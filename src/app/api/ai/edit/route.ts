@@ -3,7 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
 import type { Dictionary } from "@/lib/i18n";
 import { getDictionary } from "@/lib/i18n/server";
+import { aiCostUsd, creditsForCost, quotaBlock } from "@/lib/aiQuota";
 import { availableModels, getAiConfig, runAiEdit } from "@/lib/server/ai";
+import { getAiLimits, getAiUsage, recordAiCost, recordAiRequest } from "@/lib/server/aiUsage";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 
 // POST /api/ai/edit(要ログイン)→ text/event-stream
@@ -42,6 +44,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: t.ai.modelUnavailable }, { status: 400 });
   }
 
+  // 1 人あたりの上限(issue #43)。達していたら依頼を受けない。使用量を読めないときも、原価を守るため受けない
+  const now = new Date();
+  try {
+    const usage = await getAiUsage(session, getAiLimits(), now);
+    const blocked = quotaBlock(usage);
+    if (blocked) {
+      const message = blocked === "monthly" ? t.ai.quotaMonthly(resetDate(usage.monthResetsAt, t)) : t.ai.quotaDaily;
+      return NextResponse.json({ message, quota: blocked }, { status: 429 });
+    }
+    await recordAiRequest(session.sub, now);
+  } catch (error) {
+    console.error("[ai/edit] usage", error);
+    return NextResponse.json({ message: t.ai.unexpected }, { status: 503 });
+  }
+
   const encoder = new TextEncoder();
   const abort = new AbortController();
   request.signal.addEventListener("abort", () => abort.abort());
@@ -63,9 +80,27 @@ export async function POST(request: NextRequest) {
           onText: (text) => send({ type: "text", text }),
           signal: abort.signal,
         });
+        // 途中で切れた・断られたときも、使ったトークンの分は数える。AI 欄が残りを読み直すので、記録してから返す。
+        // 記録に失敗しても答えは返す(依頼の回数はもう数えてある)
+        const costUsd = outcome.tokens ? aiCostUsd(outcome.model, outcome.tokens) : null;
+        const credits = costUsd === null ? 0 : creditsForCost(costUsd);
+        if (costUsd !== null) {
+          await recordAiCost(session.sub, now, { credits, costUsd }).catch((error: unknown) =>
+            console.error("[ai/edit] usage", error),
+          );
+        }
         send(outcome.event);
+        // 原価は CloudWatch Logs Insights で集計できる(README の「AI の使用量」)
         console.log(
-          JSON.stringify({ msg: "ai-edit", model: outcome.model, stop: outcome.stopReason, usage: outcome.usage }),
+          JSON.stringify({
+            msg: "ai-edit",
+            user: session.sub,
+            model: outcome.model,
+            stop: outcome.stopReason,
+            usage: outcome.usage,
+            credits,
+            costUsd,
+          }),
         );
       } catch (error) {
         // ブラウザが止めた(接続を切った)ときは、返す相手がいないので何もしない
@@ -94,6 +129,11 @@ export async function POST(request: NextRequest) {
       "Cache-Control": "private, no-store",
     },
   });
+}
+
+/** 上限が戻る日(日本時間)を、画面の言語で */
+function resetDate(iso: string, t: Dictionary): string {
+  return new Date(iso).toLocaleDateString(t.time.intl, { timeZone: "Asia/Tokyo", month: "long", day: "numeric" });
 }
 
 function errorMessage(error: unknown, t: Dictionary): string {

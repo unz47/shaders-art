@@ -227,6 +227,11 @@ export const en: Dictionary = {
     promptRequired: "Enter a request",
     promptTooLong: (max: number) => `Keep the request within ${max} characters`,
     unknownModel: "This model can’t be chosen",
+    creditsLeft: (left: number, limit: number) => `${left} of ${limit} AI credits left this month`,
+    creditsShort: (left: number, limit: number) => `${left}/${limit} left`,
+    creditsHint: "Credits go down by what each request costs (about 1 for Qwen3 Coder, 2–14 for Claude Sonnet 4.6)",
+    quotaMonthly: (date: string) => `You’ve reached this month’s AI limit. It resets on ${date}`,
+    quotaDaily: "You’ve reached today’s AI request limit. You can use it again tomorrow",
     replyLanguage: "English",
   },
   api: {

@@ -1,12 +1,20 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
 import { SparkleIcon } from "@/components/SparkleIcon";
-import { AI_PROMPT_MAX, getAvailableAiModels, requestAiEdit, type AiTurnSummary, type AiUsage } from "@/lib/aiEdit";
+import {
+  AI_PROMPT_MAX,
+  getAiUsageStatus,
+  getAvailableAiModels,
+  requestAiEdit,
+  type AiTurnSummary,
+  type AiUsage,
+} from "@/lib/aiEdit";
 import { AI_MODELS, DEFAULT_AI_MODEL_ID, findAiModel, priceTier } from "@/lib/aiModels";
+import { type AiUsageStatus, quotaBlock } from "@/lib/aiQuota";
 import { useI18n } from "@/lib/i18n/client";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
@@ -141,6 +149,18 @@ export function AiPanel({
   }, [open]);
   const busy = turns.some((t) => t.status === "streaming");
 
+  // 今月のクレジットと今日の回数(issue #43)。ログインしていれば読み、依頼が終わるたびに読み直す。
+  // 上限はサーバーが守るので、ここは見せるためだけ(読めなければ何も出さない)
+  const [usage, setUsage] = useState<AiUsageStatus | null>(null);
+  const refreshUsage = useCallback(() => {
+    void getAiUsageStatus().then(setUsage);
+  }, []);
+  useEffect(() => {
+    if (access === "ready") refreshUsage();
+  }, [access, refreshUsage]);
+  const blocked = usage ? quotaBlock(usage) : null;
+  const creditsLeft = usage ? Math.max(0, usage.credits.limit - usage.credits.used) : 0;
+
   // 返答が流れてくるたびに最新のやりとりまでスクロールする
   useEffect(() => {
     const thread = threadRef.current;
@@ -156,7 +176,7 @@ export function AiPanel({
 
   async function send() {
     const prompt = draft.trim();
-    if (!prompt || busy || access !== "ready") return;
+    if (!prompt || busy || access !== "ready" || blocked) return;
     const id = nextId.current++;
     const base = baseSource;
     const history: AiTurnSummary[] = turns
@@ -196,6 +216,7 @@ export function AiPanel({
       updateTurn(id, () => ({ status: "error", reply }));
     } finally {
       abortRef.current = null;
+      refreshUsage();
     }
   }
 
@@ -284,6 +305,20 @@ export function AiPanel({
             }
             className="resize-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
           />
+          {/* 上限に達したときだけ、理由といつ戻るかを 1 行で出す(欄の高さを普段は変えない) */}
+          {usage && blocked && (
+            <p role="status" className="text-xs text-danger-solid">
+              {blocked === "monthly"
+                ? t.ai.quotaMonthly(
+                    new Date(usage.monthResetsAt).toLocaleDateString(t.time.intl, {
+                      timeZone: "Asia/Tokyo",
+                      month: "long",
+                      day: "numeric",
+                    }),
+                  )
+                : t.ai.quotaDaily}
+            </p>
+          )}
           <div className="flex items-center justify-between gap-2">
             <Select items={MODEL_LABELS} value={model} onValueChange={(value) => value && writeModel(value)} disabled={busy}>
               <SelectTrigger
@@ -310,6 +345,14 @@ export function AiPanel({
                 ))}
               </SelectContent>
             </Select>
+            {usage && !usage.unlimited && (
+              <span
+                className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-text-muted"
+                title={`${t.ai.creditsLeft(creditsLeft, usage.credits.limit)}\n${t.ai.creditsHint}`}
+              >
+                {t.ai.creditsShort(creditsLeft, usage.credits.limit)}
+              </span>
+            )}
             {busy ? (
               <Button type="button" variant="ghost" size="sm" onClick={() => abortRef.current?.abort()}>
                 {t.ai.stop}
@@ -321,7 +364,7 @@ export function AiPanel({
                 variant="secondary"
                 size="sm"
                 title={t.ai.sendHint}
-                disabled={!draft.trim() || access !== "ready"}
+                disabled={!draft.trim() || access !== "ready" || blocked !== null}
               >
                 {t.ai.send}
               </Button>

@@ -229,6 +229,11 @@ export const ja = {
     promptRequired: "依頼を入力してください",
     promptTooLong: (max: number) => `依頼は ${max} 文字以内にしてください`,
     unknownModel: "選べないモデルです",
+    creditsLeft: (left: number, limit: number) => `今月の AI の残り ${left} / ${limit} クレジット`,
+    creditsShort: (left: number, limit: number) => `残り ${left}/${limit}`,
+    creditsHint: "クレジットは使った分だけ減ります(Qwen3 Coder ならおよそ 1 回 1、Claude Sonnet 4.6 なら 2〜14)",
+    quotaMonthly: (date: string) => `今月の AI の上限に達しました。${date}にまた使えるようになります`,
+    quotaDaily: "今日の AI の上限(回数)に達しました。明日また使えます",
     /** AI への指示で、説明文の言語(依頼の言語が分からないとき)に使う */
     replyLanguage: "Japanese",
   },

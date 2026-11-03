@@ -20,6 +20,8 @@ export interface NextjsSiteProps {
   siteUrl?: string;
   /** Claude Platform on AWS のワークスペース ID(wrkspc_…、東京に作ったもの)。無ければ Claude は選べない */
   claudeWorkspaceId?: string;
+  /** AI を上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する(src/lib/server/aiUsage) */
+  aiUnlimitedEmails?: string;
 }
 
 // AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
@@ -41,7 +43,7 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails } = props;
 
     const dirname = path.dirname(fileURLToPath(import.meta.url));
     this.nextjs = new Nextjs(this, "Nextjs", {
@@ -70,6 +72,8 @@ export class NextjsSite extends Construct {
         ...(siteUrl ? { SITE_URL: siteUrl } : {}),
         AI_MODEL,
         ...(claudeWorkspaceId ? { ANTHROPIC_AWS_WORKSPACE_ID: claudeWorkspaceId } : {}),
+        // AI の 1 人あたりの上限は既定(月 40 クレジット・1 日 20 回)のまま。変えるなら AI_MONTHLY_CREDITS / AI_DAILY_REQUESTS
+        ...(aiUnlimitedEmails ? { AI_UNLIMITED_EMAILS: aiUnlimitedEmails } : {}),
       },
       overrides: {
         nextjsServer: {

@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from "msw";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
 import { AI_MODELS, DEFAULT_AI_MODEL_ID } from "@/lib/aiModels";
+import { type AiUsageStatus, DEFAULT_DAILY_REQUESTS, DEFAULT_MONTHLY_CREDITS, usagePeriods } from "@/lib/aiQuota";
 import { dictionaryFor, resolveLocale } from "@/lib/i18n";
 import { LOCALE_COOKIE } from "@/lib/i18n/locale";
 import { sourceErrors } from "@/lib/submission";
@@ -48,3 +49,15 @@ export const aiEdit = http.post("/api/ai/edit", async ({ request }) => {
 
 // GET /api/ai/models … モックでは Claude も含めて全部選べる
 export const aiModels = http.get("/api/ai/models", () => HttpResponse.json({ models: AI_MODELS.map((m) => m.id) }));
+
+// GET /api/ai/usage … 残りの表示を確かめるための決まった数(上限で止めることはしない)
+export const aiUsage = http.get("/api/ai/usage", () => {
+  const periods = usagePeriods(new Date());
+  return HttpResponse.json({
+    credits: { used: 12, limit: DEFAULT_MONTHLY_CREDITS },
+    requestsToday: { used: 3, limit: DEFAULT_DAILY_REQUESTS },
+    unlimited: false,
+    monthResetsAt: periods.monthResetsAt,
+    dayResetsAt: periods.dayResetsAt,
+  } satisfies AiUsageStatus);
+});

@@ -132,6 +132,11 @@ export interface AiEditOutcome {
   model: string;
   stopReason: string | null;
   usage: unknown;
+  /**
+   * 使ったトークンの数(使用量の上限の計算用)。途中で切れた・断られたときも、使った分は数える。
+   * 分からなければ null
+   */
+  tokens: AiUsage | null;
 }
 
 /**
@@ -202,6 +207,7 @@ async function runClaude(
     model,
     stopReason: message.stop_reason,
     usage: message.usage,
+    tokens: usage,
   };
 }
 
@@ -281,16 +287,22 @@ async function runConverse(
     if (event.metadata) usage = event.metadata.usage ?? null;
   }
 
+  const tokens = usage && { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 };
   if (stopReason === "max_tokens") {
-    return { event: { type: "error", message: t.ai.truncated }, model: cfg.model, stopReason, usage };
+    return { event: { type: "error", message: t.ai.truncated }, model: cfg.model, stopReason, usage, tokens };
   }
   if (stopReason === "content_filtered" || stopReason === "guardrail_intervened") {
     const event: AiEditEvent = { type: "error", message: t.ai.refused };
-    return { event, model: cfg.model, stopReason, usage };
+    return { event, model: cfg.model, stopReason, usage, tokens };
   }
   const { reply, source } = parseCodeBlockReply(text);
-  const tokens = usage && { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 };
-  return { event: withUsage(doneEvent(reply, source, t), cfg.model, tokens), model: cfg.model, stopReason, usage };
+  return {
+    event: withUsage(doneEvent(reply, source, t), cfg.model, tokens),
+    model: cfg.model,
+    stopReason,
+    usage,
+    tokens,
+  };
 }
 
 const FENCE = "```";

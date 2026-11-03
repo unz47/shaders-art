@@ -14,6 +14,8 @@ export class WorksTable extends Construct {
       billingMode: BillingMode.PAY_PER_REQUEST,
       // スタックを作り直したり消したりしても、作品データは残す
       removalPolicy: RemovalPolicy.RETAIN,
+      // AI の使用量の行(src/lib/server/aiUsage)は expiresAt を過ぎたら消す。作品とお気に入りの行は持たないので消えない
+      timeToLiveAttribute: "expiresAt",
     });
   }
 }
