@@ -18,8 +18,17 @@ import { Label } from "@frost-ui/react/atoms/label";
 import { Textarea } from "@frost-ui/react/atoms/textarea";
 import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@frost-ui/react/organisms/accordion";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@frost-ui/react/organisms/dialog";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@frost-ui/react/organisms/menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
+import { useToast } from "@frost-ui/react/organisms/toast";
 import { type AiAccess, AiPanel } from "@/components/AiPanel";
 import { CodeDiff } from "@/components/CodeDiff";
 import { Header } from "@/components/Header";
@@ -38,6 +47,8 @@ import {
   type WorkVisibility,
 } from "@/lib/submission";
 import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
+import { renderStillPng } from "@/lib/renderStill";
+import { buildStandaloneHtml, downloadBlob, exportFileName, toShadertoy } from "@/lib/shaderExport";
 import { useFullscreen } from "@/lib/useFullscreen";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { loginHref, useSession } from "@/lib/useSession";
@@ -179,6 +190,14 @@ const TITLE_KEY = "shaders-art:edit-title";
 // コード欄とプレビュー欄の境界の位置(右側の幅の割合)。このブラウザでの好みとして覚えておく
 const SPLIT_KEY = "shaders-art:edit-split";
 const DEFAULT_PREVIEW_RATIO = 0.45;
+// 書き出しメニューの PNG の大きさ。壁紙や SNS でよく使うもの
+const STILL_SIZES = [
+  { label: "1920×1080(横・フル HD)", width: 1920, height: 1080, suffix: "1920x1080" },
+  { label: "3840×2160(横・4K)", width: 3840, height: 2160, suffix: "4k" },
+  { label: "1080×1920(縦・スマホ壁紙)", width: 1080, height: 1920, suffix: "1080x1920" },
+  { label: "1080×1080(正方形・SNS)", width: 1080, height: 1080, suffix: "1080x1080" },
+] as const;
+
 // 境界をどこまで動かせるか(それぞれの欄の最小幅)。プレビューは再生ボタンとバッジの行が
 // 折り返さない幅にする
 const MIN_CODE_WIDTH_PX = 360;
@@ -284,6 +303,7 @@ export default function EditPage() {
   // プレビューの全画面表示
   const stageRef = useRef<HTMLDivElement>(null);
   const fullscreen = useFullscreen(stageRef);
+  const toast = useToast();
   // マウスがプレビューの上で止まっている(または外にある)間は true。全画面ボタンを隠す
   const [pointerIdle, setPointerIdle] = useState(true);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -321,6 +341,30 @@ export default function EditPage() {
   function toggleFullscreen() {
     showStageChrome();
     fullscreen.toggle();
+  }
+
+  // 書き出しは、いまプレビューに映っているコード(AI の提案を表示中ならその提案)を対象にする
+  async function exportPng(size: (typeof STILL_SIZES)[number]) {
+    try {
+      // プレビューと同じ時刻のコマを描く
+      const blob = await renderStillPng(exportSource, { width: size.width, height: size.height, time: stats.elapsed });
+      downloadBlob(blob, exportFileName(form.title, size.suffix, "png"));
+    } catch (error) {
+      const description = error instanceof Error ? error.message : undefined;
+      toast.add({ title: "画像を書き出せませんでした", description, priority: "high" });
+    }
+  }
+
+  function exportHtml() {
+    const html = buildStandaloneHtml(exportSource, { title: form.title });
+    downloadBlob(new Blob([html], { type: "text/html" }), exportFileName(form.title, "", "html"));
+  }
+
+  function copyForShadertoy() {
+    void navigator.clipboard
+      .writeText(toShadertoy(exportSource, { title: form.title }))
+      .then(() => toast.add({ title: "コピーしました", description: "Shadertoy の Image タブに貼り付けてください。" }))
+      .catch(() => toast.add({ title: "コピーできませんでした", priority: "high" }));
   }
 
   useEffect(
@@ -399,6 +443,9 @@ export default function EditPage() {
 
   // 提案があれば、プレビューとチェックはその提案のコードを見る
   const checkedSource = proposal?.source ?? code;
+  // プレビューに映っているコード(書き出しの対象)。コンパイルできているときだけ書き出せる
+  const exportSource = proposal?.source ?? compiledSource;
+  const canExport = hasRendered && stats.error === null;
   const diff = useMemo(() => (proposal ? diffLines(code, proposal.source) : null), [code, proposal]);
   const diffCount = diff ? diffStats(diff) : null;
 
@@ -638,6 +685,25 @@ export default function EditPage() {
             <Button variant="ghost" size="sm" onClick={() => setResetToken((t) => t + 1)}>
               先頭へ
             </Button>
+            <Menu>
+              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!canExport} />}>書き出し</MenuTrigger>
+              <MenuContent align="start">
+                <MenuGroup>
+                  <MenuGroupLabel>画像(PNG・いまのコマ)</MenuGroupLabel>
+                  {STILL_SIZES.map((size) => (
+                    <MenuItem key={size.suffix} onClick={() => void exportPng(size)}>
+                      {size.label}
+                    </MenuItem>
+                  ))}
+                </MenuGroup>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>コード</MenuGroupLabel>
+                  <MenuItem onClick={exportHtml}>単体で動く HTML ファイル</MenuItem>
+                  <MenuItem onClick={copyForShadertoy}>Shadertoy 用にコピー</MenuItem>
+                </MenuGroup>
+              </MenuContent>
+            </Menu>
             <div className="flex-1" />
             <Badge>{bytes} bytes</Badge>
             <Badge>{stats.fps} fps</Badge>
