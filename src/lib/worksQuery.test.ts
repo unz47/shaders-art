@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Work } from "./works";
 import {
-  numberCollection,
   parsePage,
   parseSort,
+  PICK_CANDIDATES,
   pickIndex,
   queryWorks,
   selectHome,
@@ -33,9 +33,10 @@ const slugs = (works: Work[]) => works.map((w) => w.slug);
 
 describe("parseSort / parsePage / worksHref", () => {
   it("知らない値は既定(新しい順・1 ページ目)にする", () => {
-    expect(parseSort("collected")).toBe("collected");
+    expect(parseSort("popular")).toBe("popular");
     expect(parseSort("short")).toBe("short");
-    expect(parseSort("popular")).toBe("new");
+    // 以前の「収蔵した順」の URL は新しい順で開く
+    expect(parseSort("collected")).toBe("new");
     expect(parseSort(null)).toBe("new");
     expect(parsePage("3")).toBe(3);
     expect(parsePage("0")).toBe(1);
@@ -45,70 +46,50 @@ describe("parseSort / parsePage / worksHref", () => {
 
   it("1 ページ目は page を付けない", () => {
     expect(worksHref({ sort: "new" })).toBe("/works?sort=new");
-    expect(worksHref({ sort: "collected", page: 2 })).toBe("/works?sort=collected&page=2");
-  });
-});
-
-describe("numberCollection", () => {
-  it("収蔵日(無ければ投稿日)の古い順に 1 から番号を付け、未収蔵には付けない", () => {
-    const numbered = numberCollection([
-      work("b", { collected: true, collectedAt: "2026-10-05T00:00:00Z" }),
-      work("a", { collected: true, createdAt: "2026-09-01T00:00:00Z" }),
-      work("c", { collected: false }),
-      work("d", { collected: true, collectedAt: "2026-10-03T00:00:00Z" }),
-    ]);
-    expect(numbered.map((w) => [w.slug, w.collectionNo])).toEqual([
-      ["b", 3],
-      ["a", 1],
-      ["c", undefined],
-      ["d", 2],
-    ]);
+    expect(worksHref({ sort: "popular", page: 2 })).toBe("/works?sort=popular&page=2");
   });
 });
 
 describe("sortWorks", () => {
-  const works = numberCollection([
-    work("old", { createdAt: "2026-09-01T00:00:00Z", bytes: 300 }),
+  const works = [
+    work("old", { createdAt: "2026-09-01T00:00:00Z", bytes: 300, favoriteCount: 2 }),
     work("new", { createdAt: "2026-10-10T00:00:00Z", bytes: 900 }),
-    work("c1", { collected: true, createdAt: "2026-09-15", collectedAt: "2026-09-20T00:00:00Z", bytes: 86 }),
-    work("c2", { collected: true, createdAt: "2026-09-15", collectedAt: "2026-10-01T00:00:00Z", bytes: 500 }),
-  ]);
+    work("fav", { createdAt: "2026-09-15T00:00:00Z", bytes: 86, favoriteCount: 5 }),
+    work("tie", { createdAt: "2026-09-20T00:00:00Z", bytes: 500, favoriteCount: 2 }),
+  ];
 
   it("新しい順", () => {
-    expect(slugs(sortWorks(works, "new"))).toEqual(["new", "c1", "c2", "old"]);
+    expect(slugs(sortWorks(works, "new"))).toEqual(["new", "tie", "fav", "old"]);
   });
 
-  it("収蔵した順は、収蔵作品が先頭(新しく収蔵した順)、その後ろに未収蔵(新しい順)", () => {
-    expect(slugs(sortWorks(works, "collected"))).toEqual(["c2", "c1", "new", "old"]);
+  it("お気に入りが多い順(同じ数なら新しい順、まだ無いものは最後)", () => {
+    expect(slugs(sortWorks(works, "popular"))).toEqual(["fav", "tie", "old", "new"]);
   });
 
   it("コードが短い順", () => {
-    expect(slugs(sortWorks(works, "short"))).toEqual(["c1", "old", "c2", "new"]);
+    expect(slugs(sortWorks(works, "short"))).toEqual(["fav", "old", "tie", "new"]);
   });
 });
 
 describe("queryWorks", () => {
   const all = [
-    ...Array.from({ length: 30 }, (_, i) => work(`w${String(i).padStart(2, "0")}`, { createdAt: `2026-10-01T00:00:${String(i).padStart(2, "0")}Z` })),
+    ...Array.from({ length: 30 }, (_, i) =>
+      work(`w${String(i).padStart(2, "0")}`, { createdAt: `2026-10-01T00:00:${String(i).padStart(2, "0")}Z` }),
+    ),
     work("private", { visibility: "private", createdAt: "2026-12-01T00:00:00Z" }),
-    work("c", { collected: true }),
   ];
 
   it("非公開の作品を除き、24 件ずつに分ける", () => {
     const first = queryWorks(all, { sort: "new", page: 1 });
     expect(first.items).toHaveLength(WORKS_PAGE_SIZE);
     expect(first.items[0]?.slug).toBe("w29");
-    expect(first).toMatchObject({ page: 1, pageCount: 2, total: 31, collectedTotal: 1 });
+    expect(first).toMatchObject({ page: 1, pageCount: 2, total: 30 });
     expect(slugs(first.items)).not.toContain("private");
-    expect(queryWorks(all, { sort: "new", page: 2 }).items).toHaveLength(31 - WORKS_PAGE_SIZE);
+    expect(queryWorks(all, { sort: "new", page: 2 }).items).toHaveLength(30 - WORKS_PAGE_SIZE);
   });
 
   it("範囲外のページは空", () => {
     expect(queryWorks(all, { sort: "new", page: 9 }).items).toEqual([]);
-  });
-
-  it("収蔵作品には番号が付いて返る", () => {
-    expect(queryWorks(all, { sort: "collected", page: 1 }).items[0]).toMatchObject({ slug: "c", collectionNo: 1 });
   });
 });
 
@@ -123,31 +104,36 @@ describe("pickIndex", () => {
 });
 
 describe("selectHome", () => {
-  const all = [
-    work("c1", { collected: true, collectedAt: "2026-09-01T00:00:00Z" }),
-    work("c2", { collected: true, collectedAt: "2026-09-02T00:00:00Z" }),
-    work("c3", { collected: true, collectedAt: "2026-09-03T00:00:00Z" }),
-    work("n1", { createdAt: "2026-10-20T00:00:00Z" }),
-    work("hidden", { visibility: "private", collected: true }),
-  ];
-
-  it("今日の 1 点は収蔵作品から選び、Collection からは外す", () => {
+  it("今日の 1 点はお気に入りの多い作品から選び、Popular からは外す", () => {
+    const all = [
+      work("f3", { favoriteCount: 3 }),
+      work("f9", { favoriteCount: 9 }),
+      work("f1", { favoriteCount: 1 }),
+      work("n1", { createdAt: "2026-10-20T00:00:00Z" }),
+      work("hidden", { visibility: "private", favoriteCount: 99 }),
+    ];
     const now = Date.parse("2026-10-22T03:00:00Z");
     const home = selectHome(all, now);
-    const expected = ["c1", "c2", "c3"][pickIndex(3, now)];
+    const expected = ["f9", "f3", "f1"][pickIndex(3, now)];
     expect(home.pick?.slug).toBe(expected);
-    expect(slugs(home.collection)).toEqual(["c3", "c2", "c1"].filter((s) => s !== expected));
-    expect(home).toMatchObject({ collectedTotal: 3, total: 4 });
+    expect(slugs(home.popular)).toEqual(["f9", "f3", "f1"].filter((s) => s !== expected));
+    expect(home.total).toBe(4);
     expect(home.latest[0]?.slug).toBe("n1");
   });
 
-  it("収蔵作品が無ければ、いちばん新しい作品を今日の 1 点にする", () => {
+  it("候補はお気に入りの多い上位だけ", () => {
+    const all = Array.from({ length: 20 }, (_, i) => work(`w${String(i).padStart(2, "0")}`, { favoriteCount: 100 - i }));
+    const top = new Set(slugs(sortWorks(all, "popular").slice(0, PICK_CANDIDATES)));
+    for (let day = 0; day < 30; day++) expect(top.has(selectHome(all, day * 86_400_000).pick?.slug ?? "")).toBe(true);
+  });
+
+  it("まだ誰もお気に入りにしていなければ、新しい作品から選び、Popular は空", () => {
     const home = selectHome([work("a", { createdAt: "2026-10-01T00:00:00Z" }), work("b", { createdAt: "2026-10-02T00:00:00Z" })], 0);
-    expect(home.pick?.slug).toBe("b");
-    expect(home.collection).toEqual([]);
+    expect(["a", "b"]).toContain(home.pick?.slug);
+    expect(home.popular).toEqual([]);
   });
 
   it("作品が無ければ空", () => {
-    expect(selectHome([], 0)).toEqual({ pick: null, collection: [], collectedTotal: 0, latest: [], total: 0 });
+    expect(selectHome([], 0)).toEqual({ pick: null, popular: [], latest: [], total: 0 });
   });
 });

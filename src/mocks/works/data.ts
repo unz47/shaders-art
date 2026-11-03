@@ -11,11 +11,8 @@ export interface MockWork {
   bytes: number;
   license: string;
   thumbnail: string;
+  /** 運営の「収蔵」の印。いまは画面で使っていない(お気に入りに一本化した) */
   collected: boolean;
-  /** 収蔵した日時。無ければ createdAt を収蔵日とみなす(収蔵日を持つ前に収蔵した作品) */
-  collectedAt?: string;
-  /** 収蔵番号(1 から)。保存はせず、API が収蔵日の順に数えて付ける */
-  collectionNo?: number;
   /** お気に入りにした人の数(lib/server/favorites が増減させる)。まだ誰も押していなければ無い */
   favoriteCount?: number;
   createdAt: string;
@@ -28,6 +25,7 @@ export interface MockWork {
 export const works: MockWork[] = [
   {
     slug: "plasma",
+    favoriteCount: 12,
     title: "Plasma",
     author: "tomoya",
     bytes: 555,
@@ -54,6 +52,7 @@ vec4 render(vec2 uv, vec2 p) {
   },
   {
     slug: "frost-rings",
+    favoriteCount: 8,
     title: "Frost Rings",
     author: "tomoya",
     bytes: 412,
@@ -82,6 +81,7 @@ vec4 render(vec2 uv, vec2 p) {
   },
   {
     slug: "voronoi",
+    favoriteCount: 5,
     title: "Voronoi Snow",
     author: "tomoya",
     bytes: 689,
@@ -147,6 +147,7 @@ vec4 render(vec2 uv, vec2 p) {
   },
   {
     slug: "clouds",
+    favoriteCount: 3,
     title: "Snow Clouds",
     author: "tomoya",
     bytes: 555,
@@ -191,6 +192,7 @@ vec4 render(vec2 uv, vec2 p) {
   },
   {
     slug: "tiny",
+    favoriteCount: 1,
     title: "Tiny",
     author: "tomoya",
     bytes: 86,

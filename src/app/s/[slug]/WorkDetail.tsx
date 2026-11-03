@@ -91,7 +91,6 @@ export function WorkDetail({ slug }: { slug: string }) {
     ["License", work.license],
     ["Published", published],
   ];
-  if (work.collected) spec.push(["Collected", published]);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">

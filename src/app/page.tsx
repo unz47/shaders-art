@@ -8,18 +8,22 @@ import { Header } from "@/components/Header";
 import { TodaysPick } from "@/components/TodaysPick";
 import { WorkCard } from "@/components/WorkCard";
 import { WorkTile } from "@/components/WorkTile";
+import { useFavorites } from "@/lib/useFavorites";
 import { getHome, type WorkSummary } from "@/lib/works";
 import { worksHref, type HomeSelection } from "@/lib/worksQuery";
 
-// 仕様: Figma「Home 一覧の見せ方」案 A+B ①(採用)
-//   1 段目: 今日の 1 点(横 3 列 × 縦 2 段・常に再生)と、その横に収蔵作品 2 つ
-//   Collection: 収蔵作品のモザイク(大小のタイル)。「すべて見る」は /works?sort=collected
+// 仕様: Figma「Home 一覧の見せ方」案 A+B ①(採用)。運営の「収蔵」はやめ、お気に入りに一本化した。
+//   1 段目: 今日の 1 点(横 3 列 × 縦 2 段・常に再生)と、その横に 2 つ
+//   Your favorites: ログイン中の人のお気に入り(1 つ以上あるときだけ)。「すべて見る」は /me/favorites
+//   Popular: お気に入りの多い作品のモザイク(大小のタイル)。「すべて見る」は /works?sort=popular
 //   New: 新しい順のカード 8 つ。「すべて見る」は /works?sort=new
 // 作品が少ないうちは、モザイクを大小のない同じ大きさのタイルにする(大小の組み合わせは 6 つで組んである)。
 
 /** モザイクの 6 つの大きさ(広い画面のとき)。1 つ目が縦 2 段、2 つ目が横 2 列、残りは 1 マス */
 const MOSAIC_SPANS = ["lg:row-span-2", "lg:col-span-2", "", "", "", ""];
 const UNIFORM_COLUMNS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4"];
+/** Your favorites に並べる数(1 段) */
+const FAVORITES_ON_HOME = 4;
 
 function SectionHeading({ title, note, href }: { title: string; note: string; href: string }) {
   return (
@@ -54,16 +58,32 @@ function Mosaic({ works }: { works: WorkSummary[] }) {
   );
 }
 
+/** 今日の 1 点の横に置く 2 つ。お気に入りの多い作品から。足りなければ新しい作品で埋める */
+function sideWorks(home: HomeSelection<WorkSummary>): WorkSummary[] {
+  const used = new Set([home.pick?.slug]);
+  const side: WorkSummary[] = [];
+  for (const work of [...home.popular, ...home.latest]) {
+    if (side.length === 2) break;
+    if (used.has(work.slug)) continue;
+    used.add(work.slug);
+    side.push(work);
+  }
+  return side;
+}
+
 export default function Home() {
   const [home, setHome] = useState<HomeSelection<WorkSummary> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const favorites = useFavorites();
 
   useEffect(() => {
     getHome().then(setHome, (e: unknown) => setError(e instanceof Error ? e.message : ""));
   }, []);
 
-  const side = home?.collection.slice(0, 2) ?? [];
-  const rest = home?.collection.slice(2) ?? [];
+  const side = home ? sideWorks(home) : [];
+  const sideSlugs = new Set(side.map((work) => work.slug));
+  const mosaic = home?.popular.filter((work) => !sideSlugs.has(work.slug)) ?? [];
+  const myFavorites = favorites.status === "ready" ? favorites.items : [];
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -104,14 +124,21 @@ export default function Home() {
           </section>
         )}
 
-        {home && rest.length > 0 && (
+        {home && myFavorites.length > 0 && (
           <section className="flex flex-col gap-5">
-            <SectionHeading
-              title="Collection"
-              note={`運営が収蔵した作品 · ${home.collectedTotal}`}
-              href={worksHref({ sort: "collected" })}
-            />
-            <Mosaic works={rest} />
+            <SectionHeading title="Your favorites" note={`あなたのお気に入り · ${myFavorites.length}`} href="/me/favorites" />
+            <div className="grid grid-cols-1 gap-x-sp-lg gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+              {myFavorites.slice(0, FAVORITES_ON_HOME).map((work) => (
+                <WorkCard key={work.slug} work={work} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {mosaic.length > 0 && (
+          <section className="flex flex-col gap-5">
+            <SectionHeading title="Popular" note="お気に入りの多い作品" href={worksHref({ sort: "popular" })} />
+            <Mosaic works={mosaic} />
           </section>
         )}
 
