@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from "msw";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
-import { DEFAULT_AI_MODEL_ID } from "@/lib/aiModels";
+import { AI_MODELS, DEFAULT_AI_MODEL_ID } from "@/lib/aiModels";
 import { sourceErrors } from "@/lib/submission";
 
 // POST /api/ai/edit
@@ -40,3 +40,6 @@ export const aiEdit = http.post("/api/ai/edit", async ({ request }) => {
   });
   return new HttpResponse(body, { headers: { "Content-Type": "text/event-stream; charset=utf-8" } });
 });
+
+// GET /api/ai/models … モックでは Claude も含めて全部選べる
+export const aiModels = http.get("/api/ai/models", () => HttpResponse.json({ models: AI_MODELS.map((m) => m.id) }));

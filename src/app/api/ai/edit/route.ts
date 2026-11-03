@@ -1,7 +1,7 @@
 import { APIError, RateLimitError } from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
-import { getAiConfig, runAiEdit } from "@/lib/server/ai";
+import { availableModels, getAiConfig, runAiEdit } from "@/lib/server/ai";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 
 // POST /api/ai/edit(要ログイン)→ text/event-stream
@@ -32,6 +32,11 @@ export async function POST(request: NextRequest) {
 
   const parsed = validateAiEditRequest(await request.json().catch(() => null));
   if (!parsed.ok) return NextResponse.json({ message: "依頼の内容に問題があります", errors: parsed.errors }, { status: 400 });
+  // 一覧にあっても、設定が済んでいないモデル(Claude Platform on AWS のワークスペースが無い Claude)は使えない
+  const chosen = parsed.value.model;
+  if (chosen !== null && !availableModels(cfg).some((m) => m.id === chosen)) {
+    return NextResponse.json({ message: "このモデルはまだ使えません" }, { status: 400 });
+  }
 
   const encoder = new TextEncoder();
   const abort = new AbortController();

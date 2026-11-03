@@ -12,6 +12,9 @@ importers:
 
   .:
     dependencies:
+      '@anthropic-ai/aws-sdk':
+        specifier: 0.7.7
+        version: 0.7.7(zod@4.6.5)
       '@anthropic-ai/bedrock-sdk':
         specifier: ^0.35.0
         version: 0.35.0(zod@4.6.5)
@@ -91,6 +94,9 @@ packages:
   '@alloc/quick-lru@5.3.0':
     resolution: {integrity: sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA==}
     engines: {node: '>=10'}
+
+  '@anthropic-ai/aws-sdk@0.7.7':
+    resolution: {integrity: sha512-Taf9uEgdvi0qVx79yEgb9piL1sSU5g0MFO5CBuSHWr5EAVN7+Tv8tCEO42R+jzD0I8gGsYERhz4qS/59NxtDiA==}
 
   '@anthropic-ai/bedrock-sdk@0.35.0':
     resolution: {integrity: sha512-FZi3OOZagQWUWYd2vzqJEw3nPFJn1VyTxoCy608jjUEWWATubOrT9OSf2mWrGauu/j1kLMZlk+MPuAxp74k+8w==}
@@ -819,6 +825,10 @@ packages:
     resolution: {integrity: sha512-wRlta7GuLWpTqtFfGo+nZyOO1vEvewdNR1R4rTxpC8XU6vG/NDyrFBhwLZsqg1NUoR1noVaXJPC/7ZK47QCySw==}
     engines: {node: '>=14.0.0'}
 
+  '@smithy/config-resolver@4.7.2':
+    resolution: {integrity: sha512-Y1XfSefHIOub9762qm3ShafdlEE/Va8h3kLUeMq765fNeWeNLcOP2YUPr86H1SlyGwZTOqQ67RlBZPZ3k9Djgg==}
+    engines: {node: '>=18.0.0'}
+
   '@smithy/core@3.35.0':
     resolution: {integrity: sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A==}
     engines: {node: '>=18.0.0'}
@@ -872,6 +882,10 @@ packages:
   '@smithy/node-config-provider@2.3.0':
     resolution: {integrity: sha512-0elK5/03a1JPWMDPaS726Iw6LpQg80gFut1tNpPfxFuChEEklo2yL823V94SpTZTxmKlXFtFgsP55uh3dErnIg==}
     engines: {node: '>=14.0.0'}
+
+  '@smithy/node-config-provider@4.6.2':
+    resolution: {integrity: sha512-zMrXu/O5tPa7GLtra8L4wFG6DACcXT9QV4Ay+WEAjUhXm1dVq7c/q9Qv9gkJZNLY8hmQKg08778kDcxpKNMqOA==}
+    engines: {node: '>=18.0.0'}
 
   '@smithy/node-http-handler@2.5.0':
     resolution: {integrity: sha512-mVGyPBzkkGQsPoxQUbxlEfRjrj6FPyA3u3u2VXGr9hT8wilsoQdZdvKpMBFMB8Crfhv5dNkKHIW0Yyuc7eABqA==}
@@ -3011,6 +3025,20 @@ snapshots:
 
   '@alloc/quick-lru@5.3.0': {}
 
+  '@anthropic-ai/aws-sdk@0.7.7(zod@4.6.5)':
+    dependencies:
+      '@anthropic-ai/sdk': 0.135.0(zod@4.6.5)
+      '@aws-crypto/sha256-js': 4.0.0
+      '@aws-sdk/credential-providers': 3.1152.0
+      '@smithy/config-resolver': 4.7.2
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-config-provider': 4.6.2
+      '@smithy/protocol-http': 3.3.0
+      '@smithy/signature-v4': 3.1.2
+      '@smithy/types': 2.12.0
+    transitivePeerDependencies:
+      - zod
+
   '@anthropic-ai/bedrock-sdk@0.35.0(zod@4.6.5)':
     dependencies:
       '@anthropic-ai/sdk': 0.135.0(zod@4.6.5)
@@ -3828,6 +3856,11 @@ snapshots:
       '@smithy/types': 2.12.0
       tslib: 2.8.1
 
+  '@smithy/config-resolver@4.7.2':
+    dependencies:
+      '@smithy/core': 3.36.0
+      tslib: 2.8.1
+
   '@smithy/core@3.35.0':
     dependencies:
       '@smithy/types': 4.19.0
@@ -3910,6 +3943,11 @@ snapshots:
       '@smithy/property-provider': 2.2.0
       '@smithy/shared-ini-file-loader': 2.4.0
       '@smithy/types': 2.12.0
+      tslib: 2.8.1
+
+  '@smithy/node-config-provider@4.6.2':
+    dependencies:
+      '@smithy/core': 3.36.0
       tslib: 2.8.1
 
   '@smithy/node-http-handler@2.5.0':

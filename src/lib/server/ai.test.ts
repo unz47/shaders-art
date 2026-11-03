@@ -1,11 +1,13 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import {
+  availableModels,
   buildUserMessage,
   getAiConfig,
   isClaudeModel,
   parseCodeBlockReply,
   streamableReplyLength,
+  thinkingParams,
   toFinalEvent,
 } from "./ai";
 
@@ -28,7 +30,37 @@ describe("getAiConfig", () => {
     expect(getAiConfig({ AI_MODEL: "anthropic.claude-opus-5-5" })).toEqual({
       model: "anthropic.claude-opus-5-5",
       fallbackModel: null,
+      claudeWorkspaceId: null,
     });
+  });
+});
+
+describe("availableModels", () => {
+  const ids = (env: Record<string, string>) => availableModels(getAiConfig(env)!).map((m) => m.id);
+
+  it("Claude は Claude Platform on AWS のワークスペースが設定されているときだけ選べる", () => {
+    expect(ids({ AI_MODEL: "qwen.qwen3-coder-480b-a35b-v1:0" })).not.toContain("claude-sonnet-5-5");
+    expect(
+      ids({ AI_MODEL: "qwen.qwen3-coder-480b-a35b-v1:0", ANTHROPIC_AWS_WORKSPACE_ID: "wrkspc_test" }),
+    ).toContain("claude-sonnet-5-5");
+    expect(ids({ AI_MODEL: "qwen.qwen3-coder-480b-a35b-v1:0" })).toContain("qwen.qwen3-coder-30b-a3b-v1:0");
+  });
+
+  it("Bedrock の Claude は設定なしで選べる", () => {
+    expect(ids({ AI_MODEL: "qwen.qwen3-coder-480b-a35b-v1:0" })).toContain("jp.anthropic.claude-sonnet-4-6");
+  });
+});
+
+describe("thinkingParams", () => {
+  it.each([
+    ["claude-opus-5-5", "medium"],
+    ["jp.anthropic.claude-sonnet-4-6", "low"],
+  ])("%s は adaptive thinking と effort: %s", (model, effort) => {
+    expect(thinkingParams(model)).toEqual({ thinking: { type: "adaptive" }, output_config: { effort } });
+  });
+
+  it("Haiku 4.5 には何も送らない", () => {
+    expect(thinkingParams("jp.anthropic.claude-haiku-4-5-20251001-v1:0")).toEqual({});
   });
 });
 

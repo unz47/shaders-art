@@ -16,6 +16,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@anthropic-ai/aws-sdk": "0.7.7",
     "@anthropic-ai/bedrock-sdk": "^0.35.0",
     "@anthropic-ai/sdk": "^0.135.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1152.0",

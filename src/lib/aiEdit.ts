@@ -114,6 +114,17 @@ export function parseSseEvents(buffer: string): { events: AiEditEvent[]; rest: s
   return { events, rest };
 }
 
+/** いま選べるモデルの ID。読めなければ null(呼ぶ側は Bedrock のモデルだけを出す) */
+export async function getAvailableAiModels(): Promise<string[] | null> {
+  try {
+    const res = await fetch("/api/ai/models", { cache: "no-store" });
+    if (!res.ok) return null;
+    return ((await res.json()) as { models: string[] }).models;
+  } catch {
+    return null;
+  }
+}
+
 export type AiEditResult =
   | { ok: true; reply: string; source: string | null; errors: string[]; model: string | null; usage: AiUsage | null }
   | { ok: false; status: number; message: string };
