@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { buildFragmentShader, VERTEX_SHADER } from "@/lib/glsl";
+import { buildFragmentShader, formatShaderLog, VERTEX_SHADER } from "@/lib/glsl";
 import { useI18n } from "@/lib/i18n/client";
 
 export interface ShaderEditorStats {
@@ -83,10 +83,14 @@ export function ShaderEditorPreview({
 
     let errored = false;
     let errorMessage: string | null = null;
-    // 実際のGLSLコンパイラのエラーログ(行番号つき)をそのまま使う
+    // 実際のGLSLコンパイラのエラーログを使う。行番号は、前に足した行(uniform の宣言など)を除いた
+    // 作品のコードの中での行番号に直す(コード欄の行番号と合うように)
     renderer.debug.onShaderError = (gl, _program, glVertexShader, glFragmentShader) => {
       errored = true;
-      const log = gl.getShaderInfoLog(glFragmentShader) || gl.getShaderInfoLog(glVertexShader) || "";
+      const fragmentLog = gl.getShaderInfoLog(glFragmentShader);
+      const log = fragmentLog
+        ? formatShaderLog(fragmentLog, gl.getShaderSource(glFragmentShader))
+        : gl.getShaderInfoLog(glVertexShader) || "";
       errorMessage = log.trim() || compileFailedRef.current;
       console.error(log);
     };
