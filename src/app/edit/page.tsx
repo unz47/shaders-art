@@ -52,7 +52,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { renderGif } from "@/lib/renderGif";
 import { RenderError, renderStillPng } from "@/lib/renderStill";
 import { buildStandaloneHtml, downloadBlob, exportFileName, toShadertoy } from "@/lib/shaderExport";
-import { embedSnippet, stageUrlForSource } from "@/lib/stageUrl";
+import { decodeSource, embedSnippet, sourceTokenFromHash, stageUrlForSource } from "@/lib/stageUrl";
 import { useFullscreen } from "@/lib/useFullscreen";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { loginHref, useSession } from "@/lib/useSession";
@@ -382,6 +382,46 @@ export default function EditPage() {
     if (savedAiSplit) setAiPanelRatio(savedAiSplit);
     if (savedAiClosed) setAiPanelOpen(false);
   }
+
+  // 学習(/learn)の「/edit で開く」から来たとき(#src=…)は、そのコードを開く。
+  // 下書きを戻したあとで差し替え、下書きは履歴に残す(元に戻す で戻れる)。
+  // 再読み込みでもう一度差し替えないよう、# 以降は消しておく。消したあとでエフェクトがやり直されても
+  // (開発中の Strict Mode など)開けるよう、読んだ値は ref に残し、開き終えたら捨てる
+  const linkedSourceToken = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!draftChecked) return;
+    if (linkedSourceToken.current === undefined) {
+      linkedSourceToken.current = sourceTokenFromHash(window.location.hash);
+      if (linkedSourceToken.current) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }
+    const token = linkedSourceToken.current;
+    if (!token) return;
+    let cancelled = false;
+    decodeSource(token).then(
+      (source) => {
+        if (cancelled) return;
+        linkedSourceToken.current = null;
+        setHistory((h) => commit(h, source));
+        setCode(source);
+        setCompiledSource(source);
+        setHasRendered(false);
+        setResetToken((n) => n + 1);
+        toast.add({ title: t.edit.openedFromLink, description: t.edit.openedFromLinkHint });
+      },
+      () => {
+        if (cancelled) return;
+        linkedSourceToken.current = null;
+        toast.add({ title: t.edit.openLinkFailed, priority: "high" });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // 開いたときに 1 回だけ。toast と t は依存に入れない(言語を切り替えても開き直さない)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftChecked]);
 
   // マウスがプレビューの上で動いたら全画面ボタン(とカーソル)を出し、2 秒止まったら隠す
   function showStageChrome() {
