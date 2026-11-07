@@ -20,6 +20,7 @@ export const ja = {
     noEmail: "メールアドレス未設定",
     favorites: "お気に入り",
     myWorks: "自分の作品",
+    menu: "メニュー",
   },
   footer: {
     language: "言語",

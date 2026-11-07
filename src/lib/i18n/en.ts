@@ -21,6 +21,7 @@ export const en: Dictionary = {
     noEmail: "No email address",
     favorites: "Favorites",
     myWorks: "My works",
+    menu: "Menu",
   },
   footer: {
     language: "Language",
