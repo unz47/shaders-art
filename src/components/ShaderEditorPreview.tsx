@@ -202,6 +202,9 @@ export function ShaderEditorPreview({
       material.dispose();
       quad.geometry.dispose();
       renderer.dispose();
+      // WebGL のコンテキストは GC まで残り、ブラウザが同時に持てる数(16 ほど)を食う。コードを変えるたびに
+      // 作り直す /edit や、プレビューが 10 個ほど並ぶ学習のページで上限に当たらないよう、すぐに手放す
+      renderer.forceContextLoss();
       container.removeChild(renderer.domElement);
     };
   }, [source]);
