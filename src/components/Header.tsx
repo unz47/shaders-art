@@ -28,6 +28,11 @@ import searchIcon from "@/icons/search.svg";
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
 // アバター(押すとメールアドレス・お気に入り・自分の作品・Sign out のメニュー)を一番右に出す。
 // 閲覧はログイン不要。作品を作る入口はナビの Edit だけにする(Submit ボタンは同じ行き先なので外した)。
+const NAV = [
+  { href: "/", label: "Gallery" },
+  { href: "/edit", label: "Edit" },
+] as const;
+
 export function Header({
   showSearch = true,
   searchQuery = "",
@@ -39,7 +44,10 @@ export function Header({
   // 作品詳細ページ(/s/...)と「すべての作品」(/works)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/") || pathname.startsWith("/works");
-  const editActive = pathname.startsWith("/edit");
+  const active: Record<(typeof NAV)[number]["label"], boolean> = {
+    Gallery: galleryActive,
+    Edit: pathname.startsWith("/edit"),
+  };
   const session = useSession();
   const { t } = useI18n();
 
@@ -61,30 +69,43 @@ export function Header({
   }
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center gap-sp-md border-b border-border-subtle bg-bg-base px-sp-xl backdrop-blur">
-      <div className="flex items-center gap-sp-xl">
+    <header className="sticky top-0 z-10 flex h-16 items-center gap-sp-md border-b border-border-subtle bg-bg-base px-sp-md backdrop-blur sm:px-sp-xl">
+      <div className="flex items-center gap-sp-sm sm:gap-sp-xl">
         <Link href="/" className="flex items-center gap-sp-xs pl-1 transition-colors hover:opacity-70">
           <span className="h-[2px] w-3.5 bg-accent-default" />
           <span className="font-serif text-lg italic tracking-tight text-text-primary">shaders.art</span>
         </Link>
-        <nav className="flex items-center gap-sp-md text-sm">
-          <Link
-            href="/"
-            className={`border-b-2 pb-1 text-text-primary transition-colors hover:text-accent-default ${
-              galleryActive ? "border-accent-default" : "border-transparent"
-            }`}
-          >
-            Gallery
-          </Link>
-          <Link
-            href="/edit"
-            className={`border-b-2 pb-1 text-text-primary transition-colors hover:text-accent-default ${
-              editActive ? "border-accent-default" : "border-transparent"
-            }`}
-          >
-            Edit
-          </Link>
+        <nav className="hidden items-center gap-sp-md text-sm sm:flex">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`border-b-2 pb-1 text-text-primary transition-colors hover:text-accent-default ${
+                active[item.label] ? "border-accent-default" : "border-transparent"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
         </nav>
+        {/* スマホ幅ではナビのリンクが入りきらずヘッダーがはみ出すので、メニューにまとめる */}
+        <Menu>
+          <MenuTrigger
+            aria-label={t.header.menu}
+            className="flex size-8 items-center justify-center rounded-control text-text-primary transition-colors hover:bg-bg-raised sm:hidden"
+          >
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+              <path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </MenuTrigger>
+          <MenuContent align="start">
+            {NAV.map((item) => (
+              <MenuItem key={item.href} render={<Link href={item.href} />}>
+                <span className={active[item.label] ? "font-medium text-accent-default" : ""}>{item.label}</span>
+              </MenuItem>
+            ))}
+          </MenuContent>
+        </Menu>
       </div>
 
       <div className="ml-auto flex items-center gap-sp-sm">
