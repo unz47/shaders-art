@@ -28,9 +28,11 @@ import searchIcon from "@/icons/search.svg";
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
 // アバター(押すとメールアドレス・お気に入り・自分の作品・Sign out のメニュー)を一番右に出す。
 // 閲覧はログイン不要。作品を作る入口はナビの Edit だけにする(Submit ボタンは同じ行き先なので外した)。
+// Learn は 0 から学ぶコース(/learn)。
 const NAV = [
   { href: "/", label: "Gallery" },
   { href: "/edit", label: "Edit" },
+  { href: "/learn", label: "Learn" },
 ] as const;
 
 export function Header({
@@ -47,6 +49,7 @@ export function Header({
   const active: Record<(typeof NAV)[number]["label"], boolean> = {
     Gallery: galleryActive,
     Edit: pathname.startsWith("/edit"),
+    Learn: pathname.startsWith("/learn"),
   };
   const session = useSession();
   const { t } = useI18n();
