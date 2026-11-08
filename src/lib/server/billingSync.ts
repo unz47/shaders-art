@@ -70,7 +70,7 @@ export async function fulfillCheckoutSession(
     if (!isCheckoutItem(item) || item !== "credits-500") return "ignored";
     // 有効期限は発行(記録にクレジットを足した時刻)から 6 か月。2 回目以降の呼び出しでは足さないので、最初の時刻のまま
     const purchasedAt = now;
-    await addCreditPack(
+    const added = await addCreditPack(
       userId,
       {
         id: session.id,
@@ -82,7 +82,8 @@ export async function fulfillCheckoutSession(
       customerId,
       now,
     );
-    console.log(JSON.stringify({ msg: "billing-credits", user: userId, credits: CREDIT_PACK.credits }));
+    // 売れた数を数えるログなので、同じ決済の 2 回目(同期と webhook の後のほう)では出さない
+    if (added) console.log(JSON.stringify({ msg: "billing-credits", user: userId, credits: CREDIT_PACK.credits }));
     return "credits";
   }
 

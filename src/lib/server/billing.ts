@@ -102,15 +102,24 @@ export function saveSubscription(
 }
 
 /** 追加クレジットを足す。同じ購入(Checkout のセッション ID)は 2 回足さない(webhook が何度来ても同じ結果になる) */
-export function addCreditPack(userId: string, pack: CreditPack, customerId: string | null, now = new Date()) {
-  return updateBillingRecord(userId, (record) => {
-    if (record.packs.some((p) => p.id === pack.id)) return null;
+/** 追加クレジットを足す。同じ決済(戻ってきたときの同期と webhook の両方から来る)は 1 回だけ足し、足したら true */
+export async function addCreditPack(
+  userId: string,
+  pack: CreditPack,
+  customerId: string | null,
+  now = new Date(),
+): Promise<boolean> {
+  let added = false;
+  await updateBillingRecord(userId, (record) => {
+    added = !record.packs.some((p) => p.id === pack.id);
+    if (!added) return null;
     return {
       ...record,
       stripeCustomerId: customerId ?? record.stripeCustomerId,
       packs: [...prunePacks(record.packs, now), pack],
     };
   });
+  return added;
 }
 
 /** 追加クレジットから引く。引けなかった量(残高を超えた分)を返す */

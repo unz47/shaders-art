@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // 購入を記録に写す処理。DynamoDB(./billing)と Stripe は偽物に差し替える。
 vi.mock("./billing", () => ({
-  addCreditPack: vi.fn().mockResolvedValue(undefined),
+  addCreditPack: vi.fn().mockResolvedValue(true),
   saveCustomerId: vi.fn().mockResolvedValue(undefined),
   saveSubscription: vi.fn().mockResolvedValue(undefined),
 }));
