@@ -8,14 +8,18 @@ import { InlineText } from "@/components/learn/InlineText";
 import { LessonExercise } from "@/components/learn/LessonExercise";
 import { LessonFinish } from "@/components/learn/LessonFinish";
 import { LessonPlayground } from "@/components/learn/LessonPlayground";
+import { ProGate } from "@/components/learn/ProGate";
 import type { Dictionary } from "@/lib/i18n";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
-import { type LocalizedBlock, type LocalizedLesson, localizeLesson } from "@/lib/learn/localize";
+import { type LocalizedBlock, type LocalizedLesson, localizeLesson, previewBlocks } from "@/lib/learn/localize";
+import { viewerHasPro } from "@/lib/server/viewer";
 
 // /learn/{slug} … 学習の 1 回分。本文はサーバーで見る人の言語に絞って描き、書き換えられるコード(playground)と
 // 課題(exercise)だけをブラウザの部品にする。
 // 広い画面では左に「この回の内容」を固定して出す。本文は読みやすい幅(42rem)、コードとプレビューは横いっぱいに広げる。
 // 本文がまだ無い回(コースに題名だけ先に並べた回)は「準備中」と出す。
+// Pro の回(第 3・4 部、issue #42)は、Pro でない人には最初の節だけを描き、その下に案内(ProGate)を出す。
+// 残りの本文はサーバーで外すので、ブラウザには届かない。
 
 export async function generateMetadata({ params }: PageProps<"/learn/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -29,6 +33,9 @@ export default async function LessonPage({ params }: PageProps<"/learn/[slug]">)
   const [locale, t] = await Promise.all([getLocale(), getDictionary()]);
   const lesson = localizeLesson(slug, locale);
   if (!lesson) notFound();
+  const locked = lesson.pro && lesson.ready && !(await viewerHasPro());
+  const blocks = locked ? previewBlocks(lesson.blocks) : lesson.blocks;
+  const hiddenSections = lesson.outline.length - blocks.filter((block) => block.type === "heading").length;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -56,12 +63,16 @@ export default async function LessonPage({ params }: PageProps<"/learn/[slug]">)
             </div>
             {lesson.ready ? (
               <>
-                {lesson.blocks.map((block, i) => (
+                {blocks.map((block, i) => (
                   <Block key={i} block={block} t={t} />
                 ))}
-                <div className="mt-6">
-                  <LessonFinish slug={lesson.slug} next={lesson.next} />
-                </div>
+                {locked ? (
+                  <ProGate slug={lesson.slug} t={t} remainingSections={hiddenSections} />
+                ) : (
+                  <div className="mt-6">
+                    <LessonFinish slug={lesson.slug} next={lesson.next} />
+                  </div>
+                )}
               </>
             ) : (
               // まだ本文の無い回(コースに題名だけ先に並べてある回)
@@ -105,6 +116,7 @@ function LessonHeader({ lesson, t }: { lesson: LocalizedLesson; t: Dictionary })
         </Link>
         <span aria-hidden="true">/</span>
         <span>{lesson.partTitle}</span>
+        {lesson.pro && <ProBadge />}
       </p>
       <div className="flex flex-col gap-2">
         <p className="text-xs font-medium tabular-nums text-accent-default">
@@ -256,5 +268,11 @@ function LessonNav({ lesson, t }: { lesson: LocalizedLesson; t: Dictionary }) {
         </Link>
       )}
     </nav>
+  );
+}
+
+function ProBadge() {
+  return (
+    <span className="rounded-full bg-accent-default/10 px-2 py-0.5 text-[11px] font-medium text-accent-default">Pro</span>
   );
 }

@@ -94,6 +94,23 @@ export async function getSession(): Promise<Session | null> {
 }
 
 /**
+ * Server Component 用。ID トークンが有効なときだけセッションを返し、期限切れでもリフレッシュしない
+ * (Server Component からはクッキーを書き換えられないため)。期限切れの人は、ブラウザ側で API(getSession を通る)を
+ * 一度呼べばクッキーが新しくなるので、その後に描き直す(Learn の Pro の回の ProRecheck)
+ */
+export async function getSessionWithoutRefresh(): Promise<Session | null> {
+  const cfg = getAuthConfig();
+  if (!cfg) return null;
+  const idToken = (await cookies()).get(COOKIE.id)?.value;
+  if (!idToken) return null;
+  try {
+    return await verifyIdToken(cfg, idToken);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * このサイトの公開オリジン。OAuth の redirect_uri と、リダイレクト先の組み立てに使う。
  * 本番は CDK が SITE_URL を渡す。未設定なら CloudFront Function が付ける x-forwarded-host から作る。
  */

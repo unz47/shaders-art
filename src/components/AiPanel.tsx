@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
@@ -13,8 +14,8 @@ import {
   type AiTurnSummary,
   type AiUsage,
 } from "@/lib/aiEdit";
-import { AI_MODELS, DEFAULT_AI_MODEL_ID, findAiModel, priceTier } from "@/lib/aiModels";
-import { type AiUsageStatus, quotaBlock, quotaMessage } from "@/lib/aiQuota";
+import { AI_MODELS, DEFAULT_AI_MODEL_ID, findAiModel, priceTier, requiresPro } from "@/lib/aiModels";
+import { type AiUsageStatus, creditsAvailable, quotaBlock, quotaMessage } from "@/lib/aiQuota";
 import { useI18n } from "@/lib/i18n/client";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
@@ -29,6 +30,7 @@ import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
 // 送信ボタンの左でモデルを選べる(lib/aiModels)。選んだモデルはこのブラウザに覚えておく。
 // メニューに出すのは、サーバーでいま使えるモデルだけ(Claude の 5 系は Claude Platform on AWS の設定が済んでから)。
 // 返答の下に、答えたモデルと使ったトークンの数を出す。
+// Claude は Pro だけ(issue #42)。無料の人には Pro の印を付けて選べなくし、上限に達したら料金ページに案内する。
 
 type Turn = {
   id: number;
@@ -133,8 +135,6 @@ export function AiPanel({
     };
   }, []);
   const models = AI_MODELS.filter((m) => (available && available.length > 0 ? available.includes(m.id) : m.via !== "claude"));
-  // 覚えていたモデルが今は使えなければ、既定のモデルにする
-  const model = models.some((m) => m.id === storedModel) ? storedModel : DEFAULT_AI_MODEL_ID;
   const { locale, t } = useI18n();
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
@@ -159,7 +159,15 @@ export function AiPanel({
     if (access === "ready") refreshUsage();
   }, [access, refreshUsage]);
   const blocked = usage ? quotaBlock(usage) : null;
-  const creditsLeft = usage ? Math.max(0, usage.credits.limit - usage.credits.used) : 0;
+  const creditsLeft = usage ? creditsAvailable(usage) : 0;
+  // 無料の人(使用量を読めてから決める)には、Pro だけのモデルを選べなくする
+  const freePlan = usage !== null && usage.plan === "free";
+  const selectable = (id: string) => {
+    const found = findAiModel(id);
+    return models.some((m) => m.id === id) && !(freePlan && found && requiresPro(found));
+  };
+  // 覚えていたモデルが今は使えなければ(Pro が切れた人の Claude を含む)、既定のモデルにする
+  const model = selectable(storedModel) ? storedModel : DEFAULT_AI_MODEL_ID;
 
   // 返答が流れてくるたびに最新のやりとりまでスクロールする
   useEffect(() => {
@@ -309,6 +317,15 @@ export function AiPanel({
           {usage && blocked && (
             <p role="status" className="text-xs text-danger-solid">
               {quotaMessage(blocked, usage, t)}
+              {/* 1 日の回数で止まったときは、明日まで待てば済むので案内しない */}
+              {blocked !== "daily" && (
+                <>
+                  {" "}
+                  <Link href={usage.plan === "free" ? "/pricing" : "/pricing#credits"} className="underline underline-offset-2">
+                    {usage.plan === "free" ? t.ai.upgradeForMore : t.ai.buyCredits}
+                  </Link>
+                </>
+              )}
             </p>
           )}
           <div className="flex items-center justify-between gap-2">
@@ -321,13 +338,18 @@ export function AiPanel({
               </SelectTrigger>
               <SelectContent>
                 {models.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
+                  <SelectItem key={m.id} value={m.id} disabled={!selectable(m.id)}>
                     <span className="flex flex-col gap-0.5 py-0.5">
                       <span className="flex items-baseline gap-2">
                         <span className="text-sm text-text-primary">{m.label}</span>
                         <span className="font-mono text-[11px] text-text-muted" title={t.ai.priceHint}>
                           {"$".repeat(priceTier(m))}
                         </span>
+                        {requiresPro(m) && (
+                          <span className="rounded-full bg-accent-default/10 px-1.5 text-[10px] font-medium text-accent-default" title={t.ai.proModelHint}>
+                            Pro
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-text-muted">
                         {m.maker} · {m.note[locale]}
@@ -340,9 +362,11 @@ export function AiPanel({
             {usage && !usage.unlimited && (
               <span
                 className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-text-muted"
-                title={`${t.ai.creditsLeft(creditsLeft, usage.credits.limit)}\n${t.ai.creditsHint}`}
+                title={`${t.ai.creditsLeft(Math.max(0, usage.credits.limit - usage.credits.used), usage.credits.limit)}${
+                  usage.packCredits > 0 ? `\n${t.ai.packCreditsLeft(usage.packCredits)}` : ""
+                }\n${t.ai.creditsHint}`}
               >
-                {t.ai.creditsShort(creditsLeft, usage.credits.limit)}
+                {usage.packCredits > 0 ? t.ai.creditsWithPacks(creditsLeft) : t.ai.creditsShort(creditsLeft, usage.credits.limit)}
               </span>
             )}
             {busy ? (

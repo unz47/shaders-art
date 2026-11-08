@@ -1,5 +1,6 @@
 import type { AiUsage } from "./aiEdit";
 import { AI_MODELS, findAiModel } from "./aiModels";
+import type { Plan } from "./billing/plans";
 import type { Dictionary } from "./i18n";
 
 // AI の 1 人あたりの上限(issue #43)。サーバー(lib/server/aiUsage)とブラウザ(AI 欄の残りの表示)で共有する。
@@ -9,6 +10,8 @@ import type { Dictionary } from "./i18n";
 // 上限は日本時間の月初・0 時に戻る(今日の 1 点と同じく日本時間で区切る)。
 // 1 人あたりの上限とは別に、無料の人全体の 1 か月の原価にも上限がある(lib/server/aiUsage の
 // AI_FREE_MONTHLY_BUDGET_YEN)。人が急に増えたり、アカウントを大量に作られたりしても、運営の負担が決めた額で止まる。
+// Pro(issue #42)は月 600 クレジット・1 日 100 回(lib/billing/plans)。今月の枠を使い切ったら、追加クレジットから引く
+// (lib/billing/credits)。Pro と追加クレジットを持つ人は、無料の人全体の上限では止めない(払った分なので)。
 
 export const JPY_PER_USD = 150;
 export const YEN_PER_CREDIT = 0.5;
@@ -62,7 +65,11 @@ export function usagePeriods(now: Date): UsagePeriods {
 
 /** GET /api/ai/usage の応答。AI 欄が残りを出すのに使う */
 export interface AiUsageStatus {
+  plan: Plan;
+  /** 今月の枠(無料 40 / Pro 600)。used はこの月に使ったクレジットの合計(枠を超えて追加クレジットから引いた分も含む) */
   credits: { used: number; limit: number };
+  /** 使える追加クレジットの合計 */
+  packCredits: number;
   requestsToday: { used: number; limit: number };
   /** 運営など、上限なしで使える人(使用量は記録する) */
   unlimited: boolean;
@@ -78,10 +85,15 @@ export type QuotaBlock = "monthly" | "daily" | "pool";
 /** 上限に達していれば、どの上限か。達していなければ null */
 export function quotaBlock(status: AiUsageStatus): QuotaBlock | null {
   if (status.unlimited) return null;
-  if (status.credits.used >= status.credits.limit) return "monthly";
+  if (status.credits.used >= status.credits.limit && status.packCredits <= 0) return "monthly";
   if (status.requestsToday.used >= status.requestsToday.limit) return "daily";
   if (status.freePoolExhausted) return "pool";
   return null;
+}
+
+/** 今使えるクレジット(今月の枠の残り + 追加クレジット) */
+export function creditsAvailable(status: AiUsageStatus): number {
+  return Math.max(0, status.credits.limit - status.credits.used) + status.packCredits;
 }
 
 /** 止まった理由と、いつ戻るか(サーバーの 429 と AI 欄で同じ文言を出す) */

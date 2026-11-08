@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
 import type { Dictionary } from "@/lib/i18n";
 import { getDictionary } from "@/lib/i18n/server";
-import { aiCostUsd, creditsForCost, quotaBlock, quotaMessage } from "@/lib/aiQuota";
+import { type AiUsageStatus, aiCostUsd, creditsForCost, quotaBlock, quotaMessage } from "@/lib/aiQuota";
+import { findAiModel, requiresPro } from "@/lib/aiModels";
 import {
   AiAbortedError,
   AiFirstResponseTimeoutError,
@@ -11,7 +12,7 @@ import {
   getAiConfig,
   runAiEdit,
 } from "@/lib/server/ai";
-import { getAiLimits, getAiUsage, recordAiCost, recordAiRequest } from "@/lib/server/aiUsage";
+import { countsTowardFreePool, getAiLimits, getAiUsage, recordAiCost, recordAiRequest } from "@/lib/server/aiUsage";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 
 // POST /api/ai/edit(要ログイン)→ text/event-stream
@@ -23,6 +24,7 @@ import { getSession, isSameOriginRequest } from "@/lib/server/session";
 // 出てこないので、そのあいだも ping を送り続ける。
 // モデルから最初の反応が 10 秒来なければ「混み合っています」で諦める(lib/server/ai の FIRST_RESPONSE_TIMEOUT_MS)。
 // 1 人あたり・無料の人全体の上限と使用量の記録は lib/server/aiUsage(issue #43)。
+// Pro(issue #42)は上限が広く、Claude も選べる(lib/aiModels の requiresPro)。
 
 const KEEPALIVE_MS = 10_000;
 
@@ -54,17 +56,21 @@ export async function POST(request: NextRequest) {
   // 1 人あたりの上限と、無料の人全体の上限(issue #43)。達していたら依頼を受けない。
   // 使用量を読めないときも、原価を守るため受けない
   const now = new Date();
-  let free: boolean;
+  let usage: AiUsageStatus;
   try {
-    const usage = await getAiUsage(session, getAiLimits(), now);
+    usage = await getAiUsage(session, getAiLimits(), now);
+    // Claude は Pro だけ(運営は Pro と同じに扱われる)
+    const chosenModel = findAiModel(chosen);
+    if (chosenModel && requiresPro(chosenModel) && usage.plan !== "pro") {
+      return NextResponse.json({ message: t.ai.proModelOnly, quota: "pro-model" }, { status: 403 });
+    }
     const blocked = quotaBlock(usage);
     if (blocked) {
       // どれくらい断っているか(上限が厳しすぎないか)を Logs Insights で見られるようにする
-      console.log(JSON.stringify({ msg: "ai-blocked", user: session.sub, reason: blocked }));
+      console.log(JSON.stringify({ msg: "ai-blocked", user: session.sub, reason: blocked, plan: usage.plan }));
       return NextResponse.json({ message: quotaMessage(blocked, usage, t), quota: blocked }, { status: 429 });
     }
-    free = !usage.unlimited;
-    await recordAiRequest(session.sub, now, free);
+    await recordAiRequest(session.sub, now, countsTowardFreePool(usage));
   } catch (error) {
     console.error("[ai/edit] usage", error);
     return NextResponse.json({ message: t.ai.unexpected }, { status: 503 });
@@ -96,7 +102,7 @@ export async function POST(request: NextRequest) {
         const costUsd = outcome.tokens ? aiCostUsd(outcome.model, outcome.tokens) : null;
         const credits = costUsd === null ? 0 : creditsForCost(costUsd);
         if (costUsd !== null) {
-          await recordAiCost(session.sub, now, free, { credits, costUsd }).catch((error: unknown) =>
+          await recordAiCost(session.sub, now, usage, { credits, costUsd }).catch((error: unknown) =>
             console.error("[ai/edit] usage", error),
           );
         }
@@ -119,7 +125,7 @@ export async function POST(request: NextRequest) {
           // (止め続けて上限をすり抜けられないように)
           const costUsd = aiCostUsd(error.model, error.estimatedTokens);
           const credits = creditsForCost(costUsd);
-          await recordAiCost(session.sub, now, free, { credits, costUsd }).catch((e: unknown) =>
+          await recordAiCost(session.sub, now, usage, { credits, costUsd }).catch((e: unknown) =>
             console.error("[ai/edit] usage", e),
           );
           console.log(

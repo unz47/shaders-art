@@ -26,7 +26,7 @@ import searchIcon from "@/icons/search.svg";
 // 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/テーマ切り替え。検索は /works?q=… に送る
 // Rooms は行き先が未設計のため削除。
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
-// アバター(押すとメールアドレス・お気に入り・自分の作品・Sign out のメニュー)を一番右に出す。
+// アバター(押すとメールアドレス・お気に入り・自分の作品・プランと支払い・Sign out のメニュー)を一番右に出す。
 // 閲覧はログイン不要。作品を作る入口はナビの Edit だけにする(Submit ボタンは同じ行き先なので外した)。
 // Learn は 0 から学ぶコース(/learn)。
 const NAV = [
@@ -181,6 +181,7 @@ function AccountMenu({ user }: { user: SessionUser }) {
           <MenuSeparator />
           <MenuItem render={<Link href="/me/favorites" />}>{t.header.favorites}</MenuItem>
           <MenuItem render={<Link href="/me" />}>{t.header.myWorks}</MenuItem>
+          <MenuItem render={<Link href="/me/billing" />}>{t.header.billing}</MenuItem>
           <MenuItem onClick={() => logoutForm.current?.requestSubmit()}>Sign out</MenuItem>
         </MenuContent>
       </Menu>

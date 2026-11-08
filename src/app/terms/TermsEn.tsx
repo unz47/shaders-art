@@ -4,7 +4,7 @@ import { ExternalLink, H3, List, P, Section } from "./parts";
 // 利用規約の英語版。日本語版(TermsJa)の翻訳で、食い違うときは日本語版が優先する(冒頭にもそう書く)。
 // 日本語版を変えたら、こちらも合わせて変えること。
 
-const UPDATED = "November 3, 2026";
+const UPDATED = "November 8, 2026";
 
 /** クリエイティブ・コモンズの説明ページ(英語) */
 const cc = (id: LicenseId) => licenseUrl(findLicense(id)!, "en");
@@ -28,7 +28,8 @@ export function TermsEn() {
       <Section title="1. About the Service">
         <P>
           The Service lets you write and run GLSL shader works, and post and exhibit them. You can view works without
-          signing in. Signing in is required to post works, use favorites, and use Make with AI.
+          signing in. Signing in is required to post works, use favorites, and use Make with AI. Some features are
+          offered through a paid plan (Pro) and extra credits (Section 7).
         </P>
       </Section>
 
@@ -136,7 +137,45 @@ export function TermsEn() {
         </List>
       </Section>
 
-      <Section id="records" title="7. Usage records">
+      <Section id="paid" title="7. Paid plans and extra credits">
+        <List>
+          <li>
+            The paid plan (“Pro”) raises the usage limits of Make with AI and unlocks the AI models available only on
+            Pro and every lesson of the course (Learn). Its contents and prices are shown on the pricing page.
+          </li>
+          <li>
+            Pro renews automatically every month or year from the day you sign up, and is charged on the renewal date.
+            You can cancel at any time from the Plan &amp; billing page; after cancelling you keep Pro until the end of
+            the period you have paid for.
+          </li>
+          <li>
+            If a renewal payment fails, the payment processor retries it. If it still cannot be collected, Pro ends.
+          </li>
+          <li>
+            Extra credits let you use Make with AI beyond the monthly limit. They expire 6 months after issue (when
+            payment completes), and expired credits can no longer be used. Extra credits cannot be transferred to
+            others or exchanged for cash.
+          </li>
+          <li>
+            Payments are not refundable (including prorated refunds), except where required by law or when the Service
+            could not be used because of a fault on our side.
+          </li>
+          <li>
+            The operator may change Pro’s contents or prices. Price increases are announced on the Service in advance
+            and apply from the next renewal.
+          </li>
+          <li>Payments are processed by Stripe, Inc. The operator does not receive or store card numbers.</li>
+          <li>
+            Seller details are listed in the{" "}
+            <a href="/legal/commerce" className="underline underline-offset-2 hover:text-text-primary">
+              Notice under the Act on Specified Commercial Transactions
+            </a>
+            .
+          </li>
+        </List>
+      </Section>
+
+      <Section id="records" title="8. Usage records">
         <P>To improve the Service, the operator records the following.</P>
         <List>
           <li>
@@ -151,6 +190,10 @@ export function TermsEn() {
             or linked across months.
           </li>
           <li>For Make with AI, the number of requests and the credits used by each account (to manage usage limits).</li>
+          <li>
+            For paid plans and extra credits, the subscription status and period, purchase records, and the customer ID
+            at the payment processor (Stripe), to manage plans and answer inquiries.
+          </li>
         </List>
         <P>
           These records do not use cookies. If your browser is set not to be tracked (Global Privacy Control or Do Not
@@ -159,7 +202,7 @@ export function TermsEn() {
         </P>
       </Section>
 
-      <Section title="8. Disclaimer">
+      <Section title="9. Disclaimer">
         <List>
           <li>
             The Service is provided as is. The operator does not guarantee that the Service will run without
@@ -169,14 +212,14 @@ export function TermsEn() {
         </List>
       </Section>
 
-      <Section title="9. Changes to these Terms">
+      <Section title="10. Changes to these Terms">
         <P>
           The operator may change these Terms as needed. The revised Terms take effect when they are posted on the
           Service.
         </P>
       </Section>
 
-      <Section title="10. Governing law">
+      <Section title="11. Governing law">
         <P>These Terms are governed by and interpreted under the laws of Japan.</P>
       </Section>
     </>

@@ -3,8 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ja } from "../i18n/ja";
 import { sourceErrors } from "../submission";
-import { COURSE, findLesson, LESSONS } from "./course";
-import { localizeCourse, localizeLesson } from "./localize";
+import { COURSE, FREE_LESSON_COUNT, findLesson, isProLesson, LESSONS } from "./course";
+import { localizeCourse, localizeLesson, previewBlocks } from "./localize";
 import { dedent, localizeSource } from "./source";
 import type { Lesson, Text } from "./types";
 
@@ -92,5 +92,27 @@ describe("学習のコース", () => {
     expect(localizeLesson("no-such-lesson", "ja")).toBeNull();
     const course = localizeCourse("ja");
     expect(course.parts.flatMap((p) => p.lessons).map((l) => l.number)).toEqual(LESSONS.map((_, i) => i + 1));
+  });
+});
+
+describe("Pro の回(issue #42)", () => {
+  it("第 1・2 部は誰でも、第 3・4 部は Pro", () => {
+    expect(COURSE.map((part) => part.access ?? "free")).toEqual(["free", "free", "pro", "pro"]);
+    expect(FREE_LESSON_COUNT).toBe(18);
+    expect(isProLesson(LESSONS[17]!)).toBe(false);
+    expect(isProLesson(LESSONS[18]!)).toBe(true);
+  });
+});
+
+describe("previewBlocks", () => {
+  it("Pro の回は最初の節だけを残し、課題(見本のコード)は渡さない", () => {
+    for (const lesson of LESSONS.filter(isProLesson)) {
+      const full = localizeLesson(lesson.slug, "ja")!;
+      const preview = previewBlocks(full.blocks);
+      expect(preview.length).toBeGreaterThan(0);
+      expect(preview.length).toBeLessThan(full.blocks.length);
+      expect(preview.some((block) => block.type === "exercise")).toBe(false);
+      expect(preview.filter((block) => block.type === "heading").length).toBeLessThanOrEqual(1);
+    }
   });
 });
