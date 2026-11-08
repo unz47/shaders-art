@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
       success_url: `${origin}/me/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/pricing?checkout=canceled`,
       custom_text: { submit: { message: t.billing.checkoutAgreement } },
+      // Stripe が売り手になる Managed Payments は、新しいアカウントだと既定で有効になっている。
+      // 有効なままだと custom_text が使えず、特商法の表記(売り手はこのサイトの運営)とも食い違うので、毎回切る
+      managed_payments: { enabled: false },
       ...(subscribing
         ? { subscription_data: { metadata } }
         : {
