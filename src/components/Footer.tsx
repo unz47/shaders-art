@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 // 仕様: Figma "Home / Desktop 1440" > Footer / Statement(node 10:263)
+// Licenses と Terms だけは利用規約(/terms)へのリンク。ほかはまだ見た目だけ
 export function Footer() {
   return (
     <footer className="px-sp-xl pb-sp-xl pt-24">
@@ -11,7 +14,12 @@ export function Footer() {
         <div className="flex flex-wrap items-baseline gap-x-sp-md gap-y-sp-xs text-sm">
           <span className="text-text-secondary">GitHub</span>
           <span className="text-text-secondary">Submit</span>
-          <span className="text-text-secondary">Licenses</span>
+          <Link href="/terms#license" className="text-text-secondary hover:text-text-primary">
+            Licenses
+          </Link>
+          <Link href="/terms" className="text-text-secondary hover:text-text-primary">
+            Terms
+          </Link>
           <span className="text-xs tracking-wide text-text-muted">© 2026 · one WebGL context · no backend</span>
         </div>
       </div>

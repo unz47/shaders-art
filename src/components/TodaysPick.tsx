@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderEditorPreview } from "@/components/ShaderEditorPreview";
+import { findLicense } from "@/lib/submission";
 import type { WorkSummary } from "@/lib/works";
 
 // 仕様: Figma「Home 一覧の見せ方」案 A+B ① の「今日の 1 点」。
@@ -49,7 +50,7 @@ export function TodaysPick({ work, className = "" }: { work: WorkSummary; classN
               {work.author} · {work.createdAt.slice(0, 4)}
             </span>
             <span>{work.bytes} B</span>
-            <span>{work.license.replace(/-\d.*$/, "")}</span>
+            <span>{findLicense(work.license)?.short ?? work.license}</span>
             <FavoriteCount work={work} />
           </span>
         </div>

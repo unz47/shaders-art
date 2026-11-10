@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SIZE_BUDGET_BYTES, slugify, validateSubmission } from "./submission";
 
 const SOURCE = "vec4 render(vec2 uv, vec2 p) {\n  return vec4(uv, 0.5, 1.0);\n}";
-const VALID = { title: "  Plasma  ", source: SOURCE, license: "CC0-1.0" };
+const VALID = { title: "  Plasma  ", source: SOURCE, license: "shaders-art-standard" };
 
 describe("validateSubmission", () => {
   it("正しい投稿を正規化して通す", () => {
@@ -12,7 +12,7 @@ describe("validateSubmission", () => {
       value: {
         title: "Plasma",
         source: SOURCE,
-        license: "CC0-1.0",
+        license: "shaders-art-standard",
         visibility: "public",
         author: "Anonymous",
         description: "古典",
@@ -27,6 +27,11 @@ describe("validateSubmission", () => {
     expect(result.ok && result.value.author).toBe("tomoya");
   });
 
+  it("CC BY 4.0 も選べる", () => {
+    const result = validateSubmission({ ...VALID, license: "CC-BY-4.0" });
+    expect(result.ok && result.value.license).toBe("CC-BY-4.0");
+  });
+
   it.each([
     ["タイトルが空", { ...VALID, title: "   " }],
     ["サイズ超過", { ...VALID, source: SOURCE + "//" + "x".repeat(SIZE_BUDGET_BYTES) }],
@@ -35,6 +40,7 @@ describe("validateSubmission", () => {
     ["ループ上限が大きすぎる", { ...VALID, source: SOURCE.replace("{", "{ for (int i = 0; i < 1000; i++) {}") }],
     ["while ループ", { ...VALID, source: SOURCE.replace("{", "{ while (true) {}") }],
     ["未知のライセンス", { ...VALID, license: "MIT" }],
+    ["以前のライセンス(新しい投稿では選べない)", { ...VALID, license: "CC0-1.0" }],
     ["タグが多すぎる", { ...VALID, tags: ["a", "b", "c", "d", "e", "f"] }],
     ["タグに使えない文字", { ...VALID, tags: ["日本語"] }],
   ])("%s なら弾く", (_label, input) => {
