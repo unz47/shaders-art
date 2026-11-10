@@ -4,7 +4,7 @@ import { BedrockRuntimeClient, ConverseStreamCommand } from "@aws-sdk/client-bed
 import { betaRefusalFallbackMiddleware, BetaFallbackState, type Anthropic } from "@anthropic-ai/sdk";
 import type { AiEditEvent, AiUsage, ValidAiEditRequest } from "../aiEdit";
 import { AI_MODELS, type AiModel, findAiModel } from "../aiModels";
-import { sourceErrors } from "../submission";
+import { SIZE_BUDGET_BYTES, sourceErrors } from "../submission";
 
 // AI と作る の推論は Amazon Bedrock で行う。認証は Lambda の実行ロール(SigV4)なので API キーは持たない。
 // リージョンは AWS_REGION。モデルによって呼び方が違う:
@@ -72,7 +72,7 @@ const RULES = `あなたは shaders.art のシェーダー編集アシスタン�
 - uv は 0〜1 の座標です。p は中心が原点で、縦が -1〜1、横はアスペクト比に合わせて伸びた座標です。
 - 使える uniform: float time(秒)、vec2 resolution(ピクセル)、float attention(0〜1。作品が見られているほど 1 に近づく)、vec2 mouse(p と同じ座標系のカーソル位置)。
 - gl_FragCoord は使えません。
-- コードは 4096 バイト以内。for ループの上限は数値リテラルで 64 回以下にし、while は使いません。
+- コードは ${SIZE_BUDGET_BYTES} バイト以内。for ループの上限は数値リテラルで 64 回以下にし、while は使いません。
 - 1 フレームを 8 ミリ秒以内で描ける重さにします。`;
 
 const COMMON_REPLY_RULES = `- 依頼された部分以外のコード・コメント・書き方は、できるだけそのまま残します。

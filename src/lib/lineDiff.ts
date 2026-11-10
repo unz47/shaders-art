@@ -1,5 +1,5 @@
 // AI の提案を今のコードと行単位で比べる(/edit の差分表示用)。
-// 作品は 4 KB 以内で行数が少ないので、素直な LCS(行数の積に比例)で足りる。
+// 作品は 12 KB 以内(AI に送るコードでも 24 KB まで)で、多くても数百行なので、素直な LCS(行数の積に比例)で足りる。
 
 export type DiffLine =
   | { type: "same"; text: string; newNo: number }

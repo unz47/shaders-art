@@ -1,8 +1,11 @@
 // 投稿のルール。/edit の Pre-publish checks(ブラウザ)と POST /api/works(サーバー)で共有する。
 // コンパイル可否とフレーム時間はブラウザでしか測れないので、サーバーが確かめられるのは
 // ここにある静的なチェックだけ。閾値は Notion でも「仮置き」扱い。
+// サイズは 4 KB から 12 KB に広げた。コメント、特に日本語のコメント(UTF-8 で 1 文字 3 バイト)が多いと、
+// コード自体は小さくてもすぐ超えていたため。本文が 8 KB を超える投稿も通るよう、WAF の本文サイズの
+// ルールは数えるだけにしてある(infra/lib/waf-stack.ts)。
 
-export const SIZE_BUDGET_BYTES = 4096; // 4 KB
+export const SIZE_BUDGET_BYTES = 12 * 1024; // 12 KB
 export const FRAME_TIME_BUDGET_MS = 8;
 export const LOOP_ITERATION_BUDGET = 64;
 
