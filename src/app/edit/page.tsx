@@ -29,11 +29,12 @@ import {
 } from "@frost-ui/react/organisms/menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
 import { useToast } from "@frost-ui/react/organisms/toast";
-import { type AiAccess, AiPanel } from "@/components/AiPanel";
+import { AI_PANEL_MIN_HEIGHT_PX, type AiAccess, AiPanel } from "@/components/AiPanel";
 import { CodeDiff } from "@/components/CodeDiff";
 import { Header } from "@/components/Header";
 import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview, type ShaderEditorStats } from "@/components/ShaderEditorPreview";
+import { SparkleIcon } from "@/components/SparkleIcon";
 import { SplitHandle } from "@/components/SplitHandle";
 import {
   AUTHOR_MAX,
@@ -192,6 +193,10 @@ const TITLE_KEY = "shaders-art:edit-title";
 // コード欄とプレビュー欄の境界の位置(右側の幅の割合)。このブラウザでの好みとして覚えておく
 const SPLIT_KEY = "shaders-art:edit-split";
 const DEFAULT_PREVIEW_RATIO = 0.45;
+// コード欄と AI 欄の境界の位置(AI 欄の高さの割合)。動かしていなければ保存しない(AI 欄は中身に合わせた高さ)
+const AI_SPLIT_KEY = "shaders-art:edit-ai-split";
+// AI 欄を閉じているか。閉じたときだけ保存する
+const AI_CLOSED_KEY = "shaders-art:edit-ai-closed";
 // 書き出しメニューの PNG の大きさ。壁紙や SNS でよく使うもの
 const STILL_SIZES = [
   { label: "1920×1080(横・フル HD)", width: 1920, height: 1080, suffix: "1920x1080" },
@@ -212,6 +217,8 @@ const GIF_FPS = 20;
 // 折り返さない幅にする
 const MIN_CODE_WIDTH_PX = 360;
 const MIN_PREVIEW_WIDTH_PX = 360;
+// 上下の境界の下限。コード欄の側はタイトルの行とコード数行ぶん
+const MIN_CODE_HEIGHT_PX = 200;
 
 function readDraft(): string | null {
   try {
@@ -243,20 +250,38 @@ function readTitle(): string | null {
   }
 }
 
-function readSplit(): number | null {
+function readSplit(key: string): number | null {
   try {
-    const ratio = Number(localStorage.getItem(SPLIT_KEY));
+    const ratio = Number(localStorage.getItem(key));
     return ratio > 0 && ratio < 1 ? ratio : null;
   } catch {
     return null;
   }
 }
 
-function writeSplit(ratio: number) {
+function writeSplit(key: string, ratio: number | null) {
   try {
-    localStorage.setItem(SPLIT_KEY, String(ratio));
+    if (ratio === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, String(ratio));
   } catch {
-    // 覚えられなくても、幅は変えられる
+    // 覚えられなくても、大きさは変えられる
+  }
+}
+
+function readAiClosed(): boolean {
+  try {
+    return localStorage.getItem(AI_CLOSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeAiClosed(closed: boolean) {
+  try {
+    if (closed) localStorage.setItem(AI_CLOSED_KEY, "1");
+    else localStorage.removeItem(AI_CLOSED_KEY);
+  } catch {
+    // 覚えられなくても、開け閉めはできる
   }
 }
 
@@ -310,6 +335,16 @@ export default function EditPage() {
   // 右側(プレビュー)の幅の割合。境界(SplitHandle)のドラッグで変える
   const [previewRatio, setPreviewRatio] = useState(DEFAULT_PREVIEW_RATIO);
   const columnsRef = useRef<HTMLDivElement>(null);
+  // AI 欄の高さの割合。左の欄の上下の境界のドラッグで変える。null なら中身に合わせた高さ
+  const [aiPanelRatio, setAiPanelRatio] = useState<number | null>(null);
+  const codeColumnRef = useRef<HTMLDivElement>(null);
+  // AI 欄を出しているか。閉じている間は左下の FAB で開き、開いている間は AI 欄の見出しのボタンで閉じる
+  // (隠すだけなので、閉じても会話は残る)
+  const [aiPanelOpen, setAiPanelOpen] = useState(true);
+  const fabRef = useRef<HTMLButtonElement>(null);
+  // 閉じるボタンは押すと消えるので、閉じたら FAB にフォーカスを移す(開いたときは AiPanel が入力欄に移す)。
+  // 保存していた「閉じた状態」を読み込んだときは移さない
+  const aiPanelToggled = useRef(false);
   // プレビューの全画面表示
   const stageRef = useRef<HTMLDivElement>(null);
   const fullscreen = useFullscreen(stageRef);
@@ -322,7 +357,17 @@ export default function EditPage() {
   // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
   const savedDraft = useSyncExternalStore<string | null | undefined>(subscribeNothing, readDraft, () => undefined);
   const savedTitle = useSyncExternalStore<string | null | undefined>(subscribeNothing, readTitle, () => undefined);
-  const savedSplit = useSyncExternalStore<number | null | undefined>(subscribeNothing, readSplit, () => undefined);
+  const savedSplit = useSyncExternalStore<number | null | undefined>(
+    subscribeNothing,
+    () => readSplit(SPLIT_KEY),
+    () => undefined,
+  );
+  const savedAiSplit = useSyncExternalStore<number | null | undefined>(
+    subscribeNothing,
+    () => readSplit(AI_SPLIT_KEY),
+    () => undefined,
+  );
+  const savedAiClosed = useSyncExternalStore<boolean | undefined>(subscribeNothing, readAiClosed, () => undefined);
   const [draftChecked, setDraftChecked] = useState(false);
   if (!draftChecked && savedDraft !== undefined) {
     // レンダー中に 1 回だけ state を合わせる(エフェクトで setState すると描画が二重になる)
@@ -334,6 +379,8 @@ export default function EditPage() {
     }
     if (savedTitle) setForm((f) => ({ ...f, title: savedTitle }));
     if (savedSplit) setPreviewRatio(savedSplit);
+    if (savedAiSplit) setAiPanelRatio(savedAiSplit);
+    if (savedAiClosed) setAiPanelOpen(false);
   }
 
   // マウスがプレビューの上で動いたら全画面ボタン(とカーソル)を出し、2 秒止まったら隠す
@@ -427,8 +474,25 @@ export default function EditPage() {
 
   function changePreviewRatio(ratio: number) {
     setPreviewRatio(ratio);
-    writeSplit(ratio);
+    writeSplit(SPLIT_KEY, ratio);
   }
+
+  function changeAiPanelRatio(ratio: number | null) {
+    setAiPanelRatio(ratio);
+    writeSplit(AI_SPLIT_KEY, ratio);
+  }
+
+  function changeAiPanelOpen(open: boolean) {
+    aiPanelToggled.current = true;
+    setAiPanelOpen(open);
+    writeAiClosed(!open);
+  }
+
+  useEffect(() => {
+    if (!aiPanelToggled.current) return;
+    aiPanelToggled.current = false;
+    if (!aiPanelOpen) fabRef.current?.focus();
+  }, [aiPanelOpen]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -613,7 +677,7 @@ export default function EditPage() {
       <Header showSearch={false} />
       <div ref={columnsRef} className="flex flex-1 overflow-hidden">
         {/* 左: コード(編集可能) */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div ref={codeColumnRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
             <div className="min-w-0 flex-1">
               {/* その場で編集できるタイトル。投稿ダイアログのタイトル欄と同じ値 */}
@@ -680,10 +744,44 @@ export default function EditPage() {
           ) : (
             <ShaderCodeEditor value={code} onChange={setCode} onUndo={handleUndo} onRedo={handleRedo} />
           )}
+          {aiPanelOpen && (
+            <SplitHandle
+              containerRef={codeColumnRef}
+              orientation="horizontal"
+              label="コード欄と AI 欄の境界"
+              ratio={aiPanelRatio}
+              minStartPx={MIN_CODE_HEIGHT_PX}
+              minEndPx={AI_PANEL_MIN_HEIGHT_PX}
+              onChange={changeAiPanelRatio}
+              onReset={() => changeAiPanelRatio(null)}
+            />
+          )}
+          {/* 閉じている間に未適用の提案があれば、気づけるよう印を付ける */}
+          {!aiPanelOpen && (
+            <Button
+              ref={fabRef}
+              size="icon"
+              className="absolute bottom-6 left-6 z-20 size-12 rounded-full shadow-elevation-2"
+              aria-label={proposal ? "AI 欄を開く(未適用の提案があります)" : "AI 欄を開く"}
+              title={proposal ? "AI と作る(未適用の提案があります)" : "AI と作る"}
+              onClick={() => changeAiPanelOpen(true)}
+            >
+              <SparkleIcon className="size-5" />
+              {proposal && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-0.5 -top-0.5 size-3.5 rounded-full bg-status-warning-solid ring-2 ring-bg-base"
+                />
+              )}
+            </Button>
+          )}
           <AiPanel
+            open={aiPanelOpen}
+            onClose={() => changeAiPanelOpen(false)}
             baseSource={checkedSource}
             pendingTurnId={proposal?.turnId ?? null}
             access={aiAccess}
+            heightRatio={aiPanelRatio}
             onLogin={goToLogin}
             onPropose={handlePropose}
             onApply={handleApplyProposal}
@@ -693,9 +791,10 @@ export default function EditPage() {
 
         <SplitHandle
           containerRef={columnsRef}
+          label="コード欄とプレビュー欄の境界"
           ratio={previewRatio}
-          minLeftPx={MIN_CODE_WIDTH_PX}
-          minRightPx={MIN_PREVIEW_WIDTH_PX}
+          minStartPx={MIN_CODE_WIDTH_PX}
+          minEndPx={MIN_PREVIEW_WIDTH_PX}
           onChange={changePreviewRatio}
           onReset={() => changePreviewRatio(DEFAULT_PREVIEW_RATIO)}
         />
