@@ -1,0 +1,86 @@
+# レビュー専用の Claude が PR を読み、OK ならこのジョブが緑になる。
+# main のブランチ保護で `ai-review` を必須チェックにすると「AI が OK と言うまでマージできない」になる。
+#
+# pull_request_target を使うのは、このファイルと .github/ai-review/ を必ず main 側の版で動かすため。
+# pull_request だと PR 自身がゲートを書き換えて素通りできてしまう。
+# その代わり secrets が見える状態で動くので、PR のコードは実行しない(install も build もしない)。
+# Claude に渡す道具も Read / Grep / Glob だけで、コメントの投稿は gate.sh が行う。
+name: AI Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    # ジョブごと skip すると必須チェックは「成功」扱いになる。
+    # ドラフトはそもそもマージできず、ready_for_review で必ず走り直すので skip してよい。
+    # それ以外の「見ない」条件は skip ではなくステップの失敗で表すこと。
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: fork からの PR は対象外にする
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::fork からの PR は AI レビューの対象外です。人間が読んでマージしてください。"
+          exit 1
+
+      # 作業ルートは main 側(プロンプトと gate.sh を信頼できる版で読むため)。
+      - uses: actions/checkout@v4
+
+      # PR の中身は読むだけなのでサブディレクトリに置く。
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: レビューの材料を用意する
+        id: prep
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          mkdir -p review-input
+          git -C pr-head diff "$BASE_SHA...HEAD" > review-input/pr.diff
+          git -C pr-head diff --name-only "$BASE_SHA...HEAD" > review-input/changed.txt
+          printf '# %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > review-input/pr.md
+
+          grep -Ev '^(#|$)' .github/ai-review/human-required.txt > review-input/patterns.txt
+          grep -E -f review-input/patterns.txt review-input/changed.txt > review-input/human-required.txt || true
+
+      - name: Claude にレビューさせる
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            .github/ai-review/prompt.md を読み、そこに書かれた指示に従ってこの PR をレビューしてください。
+          claude_args: |
+            --add-dir pr-head
+            --allowedTools "Read,Grep,Glob"
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["blocker","suggestion"]},"file":{"type":"string"},"line":{"type":"integer"},"body":{"type":"string"}},"required":["severity","file","body"]}}},"required":["verdict","summary","findings"]}'
+
+      # レビューが落ちた場合も結果をコメントに残したいので、キャンセル以外では必ず動かす。
+      - name: 判定を PR に書いてゲートを決める
+        if: ${{ !cancelled() && steps.prep.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RESULT: ${{ steps.review.outputs.structured_output }}
+        run: bash .github/ai-review/gate.sh
