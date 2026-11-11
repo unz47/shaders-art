@@ -5,6 +5,9 @@
 # pull_request だと PR 自身がゲートを書き換えて素通りできてしまう。
 # その代わり secrets が見える状態で動くので、PR のコードは実行しない(install も build もしない)。
 # Claude に渡す道具も Read / Grep / Glob だけで、コメントの投稿は gate.sh が行う。
+#
+# Claude は Agent SDK(.github/ai-review/review.mjs)で動かす。Max プランの月次 API クレジットが
+# Agent SDK を対象にするため。クレジットが尽きるとレビューは完走せず、このジョブは赤になる。
 name: AI Review
 
 on:
@@ -18,6 +21,12 @@ permissions:
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
+
+env:
+  # 費用を見て切り替える場所。1 回あたりの目安は Opus が Sonnet の約 2 倍。
+  REVIEW_MODEL: claude-opus-5-5
+  # 1 回のレビューで使ってよい上限(USD)。超えそうになったら打ち切り、ジョブは赤になる。
+  REVIEW_MAX_USD: "6"
 
 jobs:
   ai-review:
@@ -34,8 +43,11 @@ jobs:
           echo "::error::fork からの PR は AI レビューの対象外です。人間が読んでマージしてください。"
           exit 1
 
-      # 作業ルートは main 側(プロンプトと gate.sh を信頼できる版で読むため)。
+      # 作業ルートは main 側(プロンプトとスクリプトを信頼できる版で使うため)。
+      # Claude がファイルを読めるので、どちらのチェックアウトにもトークンを残さない。
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # PR の中身は読むだけなのでサブディレクトリに置く。
       - uses: actions/checkout@v4
@@ -60,27 +72,41 @@ jobs:
           grep -Ev '^(#|$)' .github/ai-review/human-required.txt > review-input/patterns.txt
           grep -E -f review-input/patterns.txt review-input/changed.txt > review-input/human-required.txt || true
 
-      - name: Claude にレビューさせる
-        id: review
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ github.token }}
-          prompt: |
-            .github/ai-review/prompt.md を読み、そこに書かれた指示に従ってこの PR をレビューしてください。
-          claude_args: |
-            --add-dir pr-head
-            --allowedTools "Read,Grep,Glob"
-            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["blocker","suggestion"]},"file":{"type":"string"},"line":{"type":"integer"},"body":{"type":"string"}},"required":["severity","file","body"]}}},"required":["verdict","summary","findings"]}'
+          echo "patch_id=$(git patch-id --stable < review-input/pr.diff | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
-      # レビューが落ちた場合も結果をコメントに残したいので、キャンセル以外では必ず動かす。
+      - name: 差分が前回と同じなら判定を引き継ぐ
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PATCH_ID: ${{ steps.prep.outputs.patch_id }}
+        run: bash .github/ai-review/gate.sh lookup
+
+      - uses: actions/setup-node@v4
+        if: steps.previous.outputs.reuse != 'true'
+        with:
+          node-version: 24
+
+      - name: Agent SDK を入れる
+        if: steps.previous.outputs.reuse != 'true'
+        run: npm ci --ignore-scripts
+        working-directory: .github/ai-review
+
+      # 失敗しても次のステップで「完走しなかった」とコメントに残すので、ここでは止めない。
+      - name: Claude にレビューさせる
+        if: steps.previous.outputs.reuse != 'true'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node .github/ai-review/review.mjs
+
       - name: 判定を PR に書いてゲートを決める
-        if: ${{ !cancelled() && steps.prep.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RESULT: ${{ steps.review.outputs.structured_output }}
-        run: bash .github/ai-review/gate.sh
+          PATCH_ID: ${{ steps.prep.outputs.patch_id }}
+          REUSE: ${{ steps.previous.outputs.reuse }}
+        run: bash .github/ai-review/gate.sh decide
