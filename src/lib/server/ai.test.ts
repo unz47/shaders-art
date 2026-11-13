@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { en } from "../i18n/en";
 import { ja } from "../i18n/ja";
 import {
+  AiAbortedError,
+  AiFirstResponseTimeoutError,
   availableModels,
   buildUserMessage,
+  estimateAbortedTokens,
   getAiConfig,
   isClaudeModel,
   parseCodeBlockReply,
@@ -13,6 +16,7 @@ import {
   systemPromptCodeBlock,
   thinkingParams,
   toFinalEvent,
+  watchAiRequest,
 } from "./ai";
 
 const SOURCE = "vec4 render(vec2 uv, vec2 p) {\n  return vec4(uv, 0.5, 1.0);\n}";
@@ -167,5 +171,60 @@ describe("systemPrompt", () => {
       expect(prompt).toContain("write in English.");
     }
     expect(systemPrompt(ja)).toContain("write in Japanese.");
+  });
+});
+
+describe("estimateAbortedTokens", () => {
+  it("入力は分かればその数、出力は最初の反応からの時間 × 1 秒 100", () => {
+    expect(estimateAbortedTokens({ inputChars: 3000, inputTokens: 900, firstResponseAt: 1000, abortedAt: 6500 })).toEqual({
+      inputTokens: 900,
+      outputTokens: 550,
+    });
+  });
+
+  it("入力の数が分からなければ文字数 ÷ 3。反応の前に止めたら出力は 0", () => {
+    expect(estimateAbortedTokens({ inputChars: 3001, inputTokens: null, firstResponseAt: null, abortedAt: 5000 })).toEqual({
+      inputTokens: 1001,
+      outputTokens: 0,
+    });
+  });
+
+  it("出力は 1 回の上限(16,000)を超えない", () => {
+    const estimate = estimateAbortedTokens({ inputChars: 0, inputTokens: 0, firstResponseAt: 0, abortedAt: 600_000 });
+    expect(estimate.outputTokens).toBe(16000);
+  });
+});
+
+describe("watchAiRequest", () => {
+  const options = (signal: AbortSignal) => ({ signal, model: "test-model", inputChars: 300, timeoutMs: 30 });
+  /** 止められるまで返らない呼び出し(SDK と同じく、止められたら例外) */
+  const hang = (signal: AbortSignal) =>
+    new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+
+  it("最初の反応が来なければ AiFirstResponseTimeoutError にする", async () => {
+    const result = watchAiRequest(options(new AbortController().signal), (signal) => hang(signal));
+    await expect(result).rejects.toBeInstanceOf(AiFirstResponseTimeoutError);
+  });
+
+  it("最初の反応が来れば、その後は時間がかかっても待つ", async () => {
+    const result = await watchAiRequest(options(new AbortController().signal), async (_, onEvent) => {
+      onEvent(120);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return "done";
+    });
+    expect(result).toBe("done");
+  });
+
+  it("呼び出し元が止めたら AiAbortedError にし、分かった入力のトークン数を見積もりに使う", async () => {
+    const caller = new AbortController();
+    const result = watchAiRequest(options(caller.signal), (signal, onEvent) => {
+      onEvent(120);
+      setTimeout(() => caller.abort(), 5);
+      return hang(signal);
+    });
+    await expect(result).rejects.toBeInstanceOf(AiAbortedError);
+    const error = (await result.catch((e: unknown) => e)) as AiAbortedError;
+    expect(error.model).toBe("test-model");
+    expect(error.estimatedTokens.inputTokens).toBe(120);
   });
 });
