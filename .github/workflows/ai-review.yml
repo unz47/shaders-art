@@ -1,0 +1,112 @@
+# レビュー専用の Claude が PR を読み、OK ならこのジョブが緑になる。
+# main のブランチ保護で `ai-review` を必須チェックにすると「AI が OK と言うまでマージできない」になる。
+#
+# pull_request_target を使うのは、このファイルと .github/ai-review/ を必ず main 側の版で動かすため。
+# pull_request だと PR 自身がゲートを書き換えて素通りできてしまう。
+# その代わり secrets が見える状態で動くので、PR のコードは実行しない(install も build もしない)。
+# Claude に渡す道具も Read / Grep / Glob だけで、コメントの投稿は gate.sh が行う。
+#
+# Claude は Agent SDK(.github/ai-review/review.mjs)で動かす。Max プランの月次 API クレジットが
+# Agent SDK を対象にするため。クレジットが尽きるとレビューは完走せず、このジョブは赤になる。
+name: AI Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # 費用を見て切り替える場所。1 回あたりの目安は Opus が Sonnet の約 2 倍。
+  REVIEW_MODEL: claude-opus-5-5
+  # 1 回のレビューで使ってよい上限(USD)。超えそうになったら打ち切り、ジョブは赤になる。
+  REVIEW_MAX_USD: "6"
+
+jobs:
+  ai-review:
+    # ジョブごと skip すると必須チェックは「成功」扱いになる。
+    # ドラフトはそもそもマージできず、ready_for_review で必ず走り直すので skip してよい。
+    # それ以外の「見ない」条件は skip ではなくステップの失敗で表すこと。
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: fork からの PR は対象外にする
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::fork からの PR は AI レビューの対象外です。人間が読んでマージしてください。"
+          exit 1
+
+      # 作業ルートは main 側(プロンプトとスクリプトを信頼できる版で使うため)。
+      # Claude がファイルを読めるので、どちらのチェックアウトにもトークンを残さない。
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # PR の中身は読むだけなのでサブディレクトリに置く。
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: レビューの材料を用意する
+        id: prep
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          mkdir -p review-input
+          git -C pr-head diff "$BASE_SHA...HEAD" > review-input/pr.diff
+          git -C pr-head diff --name-only "$BASE_SHA...HEAD" > review-input/changed.txt
+          printf '# %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > review-input/pr.md
+
+          grep -Ev '^(#|$)' .github/ai-review/human-required.txt > review-input/patterns.txt
+          grep -E -f review-input/patterns.txt review-input/changed.txt > review-input/human-required.txt || true
+
+          echo "patch_id=$(git patch-id --stable < review-input/pr.diff | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: 差分が前回と同じなら判定を引き継ぐ
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PATCH_ID: ${{ steps.prep.outputs.patch_id }}
+        run: bash .github/ai-review/gate.sh lookup
+
+      - uses: actions/setup-node@v4
+        if: steps.previous.outputs.reuse != 'true'
+        with:
+          node-version: 24
+
+      - name: Agent SDK を入れる
+        if: steps.previous.outputs.reuse != 'true'
+        run: npm ci --ignore-scripts
+        working-directory: .github/ai-review
+
+      # 失敗しても次のステップで「完走しなかった」とコメントに残すので、ここでは止めない。
+      - name: Claude にレビューさせる
+        if: steps.previous.outputs.reuse != 'true'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node .github/ai-review/review.mjs
+
+      - name: 判定を PR に書いてゲートを決める
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PATCH_ID: ${{ steps.prep.outputs.patch_id }}
+          REUSE: ${{ steps.previous.outputs.reuse }}
+        run: bash .github/ai-review/gate.sh decide
