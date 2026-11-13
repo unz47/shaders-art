@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { NextResponse, type NextRequest } from "next/server";
+import { getDictionary } from "@/lib/i18n/server";
 import { db, scanAllWorks, tableName, toPublicWork } from "@/lib/server/db";
 import { getSession, isSameOriginRequest } from "@/lib/server/session";
 import { slugify, validateSubmission } from "@/lib/submission";
@@ -25,18 +26,19 @@ export async function GET(request: NextRequest) {
 // 公開作品は詳細 URL と Gallery から閲覧できる。収蔵フラグは運営向けメタデータとして残す。
 // 非公開作品は投稿者の認証済み authorId を照合し、一覧にも含めない。
 export async function POST(request: NextRequest) {
+  const t = await getDictionary();
   if (!isSameOriginRequest(request)) return NextResponse.json({ message: "forbidden" }, { status: 403 });
   // JSON 以外を受けない = 他サイトのフォームからの単純 POST を通さない
   if (!request.headers.get("content-type")?.includes("application/json")) {
-    return NextResponse.json({ message: "Content-Type は application/json にしてください" }, { status: 415 });
+    return NextResponse.json({ message: t.api.jsonOnly }, { status: 415 });
   }
 
   const session = await getSession();
-  if (!session) return NextResponse.json({ message: "投稿にはログインが必要です" }, { status: 401 });
+  if (!session) return NextResponse.json({ message: t.api.loginToPost }, { status: 401 });
 
   const body: unknown = await request.json().catch(() => null);
-  const result = validateSubmission(body);
-  if (!result.ok) return NextResponse.json({ message: "投稿内容に問題があります", errors: result.errors }, { status: 400 });
+  const result = validateSubmission(body, t.submission);
+  if (!result.ok) return NextResponse.json({ message: t.api.badSubmission, errors: result.errors }, { status: 400 });
 
   const submission = result.value;
   const base = slugify(submission.title);
@@ -73,5 +75,5 @@ export async function POST(request: NextRequest) {
       throw error;
     }
   }
-  return NextResponse.json({ message: "一時的に投稿できませんでした。もう一度お試しください" }, { status: 503 });
+  return NextResponse.json({ message: t.api.postUnavailable }, { status: 503 });
 }

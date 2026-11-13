@@ -5,13 +5,15 @@ import * as THREE from "three";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { buildFragmentShader, VERTEX_SHADER } from "@/lib/glsl";
+import { useI18n } from "@/lib/i18n/client";
 
 export function ShaderStage({ source, bytes }: { source: string; bytes: number }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(true);
   const [elapsed, setElapsed] = useState(0);
   const [fps, setFps] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const { t } = useI18n();
 
   // rAF ループから最新の playing を読むための ref(state だと古い値を閉じ込めてしまうため)
   const playingRef = useRef(playing);
@@ -24,7 +26,7 @@ export function ShaderStage({ source, bytes }: { source: string; bytes: number }
     const container = containerRef.current;
     if (!container) return;
 
-    setError(null);
+    setError(false);
     elapsedRef.current = 0;
     setElapsed(0);
 
@@ -35,7 +37,7 @@ export function ShaderStage({ source, bytes }: { source: string; bytes: number }
     let errored = false;
     renderer.debug.onShaderError = (_gl, _program, _vs, fs) => {
       errored = true;
-      setError("シェーダーのコンパイルに失敗しました");
+      setError(true);
       console.error(fs);
     };
 
@@ -126,17 +128,17 @@ export function ShaderStage({ source, bytes }: { source: string; bytes: number }
       >
         {error && (
           <div className="absolute inset-0 grid place-items-center bg-bg-base/90 p-4 text-center text-sm text-text-muted">
-            {error}
+            {t.preview.compileFailed}
           </div>
         )}
       </div>
 
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={() => setPlaying((p) => !p)}>
-          {playing ? "一時停止" : "再生"}
+          {playing ? t.preview.pause : t.preview.play}
         </Button>
         <Button variant="ghost" size="sm" onClick={reset}>
-          先頭へ
+          {t.preview.restart}
         </Button>
         <div className="flex-1" />
         <Badge>{bytes} bytes</Badge>

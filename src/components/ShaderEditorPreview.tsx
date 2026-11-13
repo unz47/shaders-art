@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { buildFragmentShader, VERTEX_SHADER } from "@/lib/glsl";
+import { useI18n } from "@/lib/i18n/client";
 
 export interface ShaderEditorStats {
   fps: number;
@@ -32,6 +33,12 @@ export function ShaderEditorPreview({
   /** 再生速度の倍率(配信背景の /stage で ?speed= から渡す) */
   speed?: number;
 }) {
+  const { t } = useI18n();
+  // ログが空のときの文言。描画のエフェクトは source が変わったときだけやり直すので、言語は ref で渡す
+  const compileFailedRef = useRef(t.preview.compileFailed);
+  useEffect(() => {
+    compileFailedRef.current = t.preview.compileFailed;
+  }, [t]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,7 +87,7 @@ export function ShaderEditorPreview({
     renderer.debug.onShaderError = (gl, _program, glVertexShader, glFragmentShader) => {
       errored = true;
       const log = gl.getShaderInfoLog(glFragmentShader) || gl.getShaderInfoLog(glVertexShader) || "";
-      errorMessage = log.trim() || "コンパイルに失敗しました";
+      errorMessage = log.trim() || compileFailedRef.current;
       console.error(log);
     };
 
@@ -200,7 +207,7 @@ export function ShaderEditorPreview({
       <div ref={containerRef} className="h-full w-full [&>canvas]:h-full [&>canvas]:w-full" />
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-base p-6 text-center">
-          <p className="text-sm font-medium text-danger-solid">コンパイルエラー</p>
+          <p className="text-sm font-medium text-danger-solid">{t.preview.compileError}</p>
           <p className="max-w-full whitespace-pre-wrap font-mono text-xs text-text-primary">{error}</p>
         </div>
       )}

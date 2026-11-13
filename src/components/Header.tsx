@@ -17,6 +17,7 @@ import {
 } from "@frost-ui/react/organisms/menu";
 import { SearchBox } from "@/components/SearchBox";
 import { avatarBackground, avatarInitial } from "@/lib/avatar";
+import { useI18n } from "@/lib/i18n/client";
 import { loginHref, type SessionUser, useSession } from "@/lib/useSession";
 import moonIcon from "@/icons/moon.svg";
 import searchIcon from "@/icons/search.svg";
@@ -40,6 +41,7 @@ export function Header({
   const galleryActive = pathname === "/" || pathname.startsWith("/s/") || pathname.startsWith("/works");
   const editActive = pathname.startsWith("/edit");
   const session = useSession();
+  const { t } = useI18n();
 
   // 初期値は layout.tsx の先読みスクリプトが既に適用した data-theme から読む
   // (SSR時は document が無いので light 決め打ち。ずれても下の suppressHydrationWarning で吸収)
@@ -95,7 +97,7 @@ export function Header({
             {/* 狭い画面では検索欄が場所を取ってヘッダーがはみ出すので、虫めがねだけにして /works の検索欄に送る */}
             <Link
               href="/works"
-              aria-label="作品を検索"
+              aria-label={t.header.search}
               className="flex size-8 items-center justify-center rounded-control border border-border-subtle md:hidden"
             >
               <Image src={searchIcon} alt="" width={16} height={16} />
@@ -110,7 +112,7 @@ export function Header({
             theme === "dark" ? "bg-bg-raised" : "bg-bg-base"
           }`}
         >
-          <Image src={moonIcon} alt="ダークモード切り替え" width={16} height={16} />
+          <Image src={moonIcon} alt={t.header.themeToggle} width={16} height={16} />
         </button>
         {session.status === "ready" && session.user && <AccountMenu user={session.user} />}
         {session.status === "ready" && session.configured && !session.user && (
@@ -128,13 +130,14 @@ function AccountMenu({ user }: { user: SessionUser }) {
   // ログアウトは POST(GET だとプリフェッチなどで勝手に発火しうる)。メニューの中身は
   // ポップアップとして別の場所に描かれるので、フォームはメニューの外に置いて送る
   const logoutForm = useRef<HTMLFormElement>(null);
+  const { t } = useI18n();
 
   return (
     <>
       <form ref={logoutForm} action="/api/auth/logout" method="post" hidden />
       <Menu>
         <MenuTrigger
-          aria-label="アカウント"
+          aria-label={t.header.account}
           className="rounded-full transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-default"
         >
           <Avatar
@@ -146,14 +149,14 @@ function AccountMenu({ user }: { user: SessionUser }) {
         </MenuTrigger>
         <MenuContent align="end">
           <MenuGroup>
-            <MenuGroupLabel>ログイン中</MenuGroupLabel>
+            <MenuGroupLabel>{t.header.signedIn}</MenuGroupLabel>
             <div className="max-w-64 truncate px-sp-sm pb-sp-xs text-sm text-text-primary">
-              {user.email ?? "メールアドレス未設定"}
+              {user.email ?? t.header.noEmail}
             </div>
           </MenuGroup>
           <MenuSeparator />
-          <MenuItem render={<Link href="/me/favorites" />}>お気に入り</MenuItem>
-          <MenuItem render={<Link href="/me" />}>自分の作品</MenuItem>
+          <MenuItem render={<Link href="/me/favorites" />}>{t.header.favorites}</MenuItem>
+          <MenuItem render={<Link href="/me" />}>{t.header.myWorks}</MenuItem>
           <MenuItem onClick={() => logoutForm.current?.requestSubmit()}>Sign out</MenuItem>
         </MenuContent>
       </Menu>

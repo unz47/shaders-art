@@ -84,10 +84,10 @@ async function draw(source: string, width: number, height: number): Promise<stri
     scene.remove(mesh);
     material.dispose();
   }
-  if (failed) throw new Error("コンパイルに失敗しました");
+  if (failed) throw new Error("compile failed");
   // WebP を作れないブラウザでは PNG になる
   const blob = await new Promise<Blob | null>((resolve) => renderer.domElement.toBlob(resolve, "image/webp", 0.9));
-  if (!blob) throw new Error("画像を作れませんでした");
+  if (!blob) throw new Error("no image");
   return URL.createObjectURL(blob);
 }
 

@@ -6,6 +6,14 @@ import type { HomeSelection, WorksPage, WorksSort } from "@/lib/worksQuery";
 // モックに戻したいときは NEXT_PUBLIC_API_MOCK=1 pnpm dev で上書きする。
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
 
+/** API が失敗した(2xx 以外が返った)。文言は画面の言語で出すので、ここではステータスだけを持つ */
+export class ApiError extends Error {
+  constructor(readonly status: number) {
+    super(`API responded ${status}`);
+    this.name = "ApiError";
+  }
+}
+
 /** 詳細。GLSL 本体(source)を持つ */
 export type Work = MockWork;
 /** 一覧の 1 件ぶん。ホバー再生用に source も含む(詳細と同じ形) */
@@ -24,21 +32,21 @@ export async function getWorks({
   const params = new URLSearchParams({ sort, page: String(page) });
   if (q) params.set("q", q);
   const res = await fetch(`${BASE}/works?${params}`);
-  if (!res.ok) throw new Error(`一覧を取得できませんでした (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status);
   return (await res.json()) as WorksPage<WorkSummary>;
 }
 
 /** Home に出す作品(今日の 1 点・Collection・New) */
 export async function getHome(): Promise<HomeSelection<WorkSummary>> {
   const res = await fetch(`${BASE}/home`);
-  if (!res.ok) throw new Error(`作品を取得できませんでした (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status);
   return (await res.json()) as HomeSelection<WorkSummary>;
 }
 
 export async function getWork(slug: string): Promise<Work | null> {
   const res = await fetch(`${BASE}/works/${encodeURIComponent(slug)}`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`作品を取得できませんでした (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status);
   return (await res.json()) as Work;
 }
 
@@ -49,7 +57,7 @@ export async function getWork(slug: string): Promise<Work | null> {
 export async function getMyWorks(): Promise<WorkSummary[] | null> {
   const res = await fetch("/api/me/works", { cache: "no-store" });
   if (res.status === 401) return null;
-  if (!res.ok) throw new Error(`作品を取得できませんでした (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status);
   const { items } = (await res.json()) as { items: WorkSummary[] };
   return items;
 }
@@ -58,7 +66,7 @@ export async function getMyWorks(): Promise<WorkSummary[] | null> {
 export async function getMyFavorites(): Promise<WorkSummary[] | null> {
   const res = await fetch("/api/me/favorites", { cache: "no-store" });
   if (res.status === 401) return null;
-  if (!res.ok) throw new Error(`お気に入りを取得できませんでした (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status);
   const { items } = (await res.json()) as { items: WorkSummary[] };
   return items;
 }
@@ -66,11 +74,11 @@ export async function getMyFavorites(): Promise<WorkSummary[] | null> {
 /** お気に入りにする(on)・外す。何度送っても同じ結果になる */
 export async function setFavorite(slug: string, on: boolean): Promise<{ favorited: boolean; favoriteCount: number }> {
   const res = await fetch(`/api/works/${encodeURIComponent(slug)}/favorite`, { method: on ? "POST" : "DELETE" });
-  if (!res.ok) throw new Error(`お気に入りを変えられませんでした (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status);
   return (await res.json()) as { favorited: boolean; favoriteCount: number };
 }
 
-export type SubmitResult ={ ok: true; slug: string } | { ok: false; status: number; errors: string[] };
+export type SubmitResult = { ok: true; slug: string } | { ok: false; status: number; errors: string[] };
 
 /**
  * 投稿(要ログイン)。セッションのクッキーを送るため、NEXT_PUBLIC_API_BASE ではなく
@@ -84,5 +92,6 @@ export async function submitWork(input: SubmissionInput): Promise<SubmitResult> 
   });
   const data = (await res.json().catch(() => ({}))) as { slug?: string; message?: string; errors?: string[] };
   if (res.ok && data.slug) return { ok: true, slug: data.slug };
-  return { ok: false, status: res.status, errors: data.errors ?? [data.message ?? `投稿できませんでした (${res.status})`] };
+  // 文言はサーバーが依頼の言語で返す。何も返らなかったときは、画面がステータスから出す
+  return { ok: false, status: res.status, errors: data.errors ?? (data.message ? [data.message] : []) };
 }

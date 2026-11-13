@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { en } from "./i18n/en";
+import { ja } from "./i18n/ja";
 import { SIZE_BUDGET_BYTES, slugify, validateSubmission } from "./submission";
 
 const SOURCE = "vec4 render(vec2 uv, vec2 p) {\n  return vec4(uv, 0.5, 1.0);\n}";
@@ -6,7 +8,7 @@ const VALID = { title: "  Plasma  ", source: SOURCE, license: "shaders-art-stand
 
 describe("validateSubmission", () => {
   it("正しい投稿を正規化して通す", () => {
-    const result = validateSubmission({ ...VALID, tags: "Sine, #classic, sine", description: " 古典 " });
+    const result = validateSubmission({ ...VALID, tags: "Sine, #classic, sine", description: " 古典 " }, ja.submission);
     expect(result).toEqual({
       ok: true,
       value: {
@@ -23,12 +25,12 @@ describe("validateSubmission", () => {
   });
 
   it("名前があればそれを使う", () => {
-    const result = validateSubmission({ ...VALID, author: " tomoya " });
+    const result = validateSubmission({ ...VALID, author: " tomoya " }, ja.submission);
     expect(result.ok && result.value.author).toBe("tomoya");
   });
 
   it("CC BY 4.0 も選べる", () => {
-    const result = validateSubmission({ ...VALID, license: "CC-BY-4.0" });
+    const result = validateSubmission({ ...VALID, license: "CC-BY-4.0" }, ja.submission);
     expect(result.ok && result.value.license).toBe("CC-BY-4.0");
   });
 
@@ -44,13 +46,18 @@ describe("validateSubmission", () => {
     ["タグが多すぎる", { ...VALID, tags: ["a", "b", "c", "d", "e", "f"] }],
     ["タグに使えない文字", { ...VALID, tags: ["日本語"] }],
   ])("%s なら弾く", (_label, input) => {
-    const result = validateSubmission(input);
+    const result = validateSubmission(input, ja.submission);
     expect(result.ok).toBe(false);
   });
 
+  it("理由は渡した言語の文言で返す", () => {
+    const result = validateSubmission({ ...VALID, title: " " }, en.submission);
+    expect(!result.ok && result.errors).toContain("Enter a title");
+  });
+
   it("オブジェクト以外は弾く", () => {
-    expect(validateSubmission(null).ok).toBe(false);
-    expect(validateSubmission("x").ok).toBe(false);
+    expect(validateSubmission(null, ja.submission).ok).toBe(false);
+    expect(validateSubmission("x", ja.submission).ok).toBe(false);
   });
 });
 

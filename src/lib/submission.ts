@@ -5,6 +5,8 @@
 // コード自体は小さくてもすぐ超えていたため。本文が 8 KB を超える投稿も通るよう、WAF の本文サイズの
 // ルールは数えるだけにしてある(infra/lib/waf-stack.ts)。
 
+import type { Dictionary, Locale } from "./i18n";
+
 export const SIZE_BUDGET_BYTES = 12 * 1024; // 12 KB
 export const FRAME_TIME_BUDGET_MS = 8;
 export const LOOP_ITERATION_BUDGET = 64;
@@ -19,39 +21,12 @@ export type WorkVisibility = "public" | "private";
 // ライセンス。新しい投稿で選べるのは、YouTube と同じく「標準」(既定)と CC BY の 2 つだけ。
 // 標準は利用規約(/terms#license)で、ほかの人にはサイトの機能の中での利用だけを許す。
 // CC0 と CC BY-NC-SA は以前の投稿で選べたもので、その作品を表示するためだけに残している。
+// 画面に出す名前と使い方の一言は lib/i18n の license。
 export const LICENSES = [
-  {
-    id: "shaders-art-standard",
-    label: "shaders.art 標準",
-    short: "Standard",
-    url: "/terms#license",
-    selectable: true,
-    reuse: "サイトの外でコードを使うには、作者の許可が必要です。",
-  },
-  {
-    id: "CC-BY-4.0",
-    label: "CC BY 4.0",
-    short: "CC BY",
-    url: "https://creativecommons.org/licenses/by/4.0/deed.ja",
-    selectable: true,
-    reuse: "使うときは、作者名とライセンス(CC BY 4.0)を表示してください。",
-  },
-  {
-    id: "CC0-1.0",
-    label: "CC0 1.0",
-    short: "CC0",
-    url: "https://creativecommons.org/publicdomain/zero/1.0/deed.ja",
-    selectable: false,
-    reuse: "誰でも自由に使えます。",
-  },
-  {
-    id: "CC-BY-NC-SA-4.0",
-    label: "CC BY-NC-SA 4.0",
-    short: "CC BY-NC-SA",
-    url: "https://creativecommons.org/licenses/by-nc-sa/4.0/deed.ja",
-    selectable: false,
-    reuse: "使うときは作者名とライセンスを表示し、営利目的では使わず、改変したら同じライセンスで公開してください。",
-  },
+  { id: "shaders-art-standard", short: "Standard", url: "/terms#license", selectable: true },
+  { id: "CC-BY-4.0", short: "CC BY", url: "https://creativecommons.org/licenses/by/4.0/", selectable: true },
+  { id: "CC0-1.0", short: "CC0", url: "https://creativecommons.org/publicdomain/zero/1.0/", selectable: false },
+  { id: "CC-BY-NC-SA-4.0", short: "CC BY-NC-SA", url: "https://creativecommons.org/licenses/by-nc-sa/4.0/", selectable: false },
 ] as const;
 export type LicenseId = (typeof LICENSES)[number]["id"];
 export type License = (typeof LICENSES)[number];
@@ -59,6 +34,11 @@ export const DEFAULT_LICENSE: LicenseId = "shaders-art-standard";
 
 export function findLicense(id: string): License | undefined {
   return LICENSES.find((l) => l.id === id);
+}
+
+/** ライセンスの説明ページ。標準は利用規約、CC はクリエイティブ・コモンズの説明(画面の言語で) */
+export function licenseUrl(license: License, locale: Locale): string {
+  return license.url.startsWith("/") ? license.url : `${license.url}deed.${locale}`;
 }
 
 /**
@@ -77,9 +57,9 @@ export function hasRenderSignature(source: string): boolean {
 
 // for(...; i < N; ...) のNが数値リテラルのループだけを検出する簡易チェック。
 // 変数を上限に使うループや while は判定できないので、それらは一律「要確認」(ok: null)扱いにする。
-export function checkLoopsBounded(source: string): { ok: boolean | null; detail: string } {
+export function checkLoopsBounded(source: string, t: Dictionary["submission"]): { ok: boolean | null; detail: string } {
   if (/\bwhile\s*\(/.test(source)) {
-    return { ok: null, detail: "while ループは手動確認が必要" };
+    return { ok: null, detail: t.whileLoop };
   }
   const bounds: number[] = [];
   const forLoopPattern = /for\s*\([^;]*;\s*\w+\s*<\s*(\d+)\s*;[^)]*\)/g;
@@ -88,25 +68,28 @@ export function checkLoopsBounded(source: string): { ok: boolean | null; detail:
     bounds.push(Number(match[1]));
   }
   if (bounds.length === 0) {
-    return { ok: true, detail: "ループなし" };
+    return { ok: true, detail: t.noLoops };
   }
   const maxBound = Math.max(...bounds);
   if (maxBound > LOOP_ITERATION_BUDGET) {
-    return { ok: false, detail: `max ${maxBound} > ${LOOP_ITERATION_BUDGET} iterations` };
+    return { ok: false, detail: t.tooManyIterations(maxBound, LOOP_ITERATION_BUDGET) };
   }
-  return { ok: true, detail: `max ${maxBound} iterations` };
+  return { ok: true, detail: t.maxIterations(maxBound) };
 }
 
-/** コードだけを見る静的チェック。投稿(POST /api/works)と AI の提案(POST /api/ai/edit)で共有する */
-export function sourceErrors(source: string): string[] {
-  if (!source.trim()) return ["コードが空です"];
+/**
+ * コードだけを見る静的チェック。投稿(POST /api/works)と AI の提案(POST /api/ai/edit)で共有する。
+ * 文言は依頼の言語で(t は lib/i18n の submission)
+ */
+export function sourceErrors(source: string, t: Dictionary["submission"]): string[] {
+  if (!source.trim()) return [t.emptySource];
   const errors: string[] = [];
   const bytes = byteLength(source);
-  if (bytes > SIZE_BUDGET_BYTES) errors.push(`コードは ${SIZE_BUDGET_BYTES} バイト以内にしてください(現在 ${bytes})`);
-  if (!hasRenderSignature(source)) errors.push("vec4 render(vec2 uv, vec2 p) が見つかりません");
-  if (source.includes("gl_FragCoord")) errors.push("gl_FragCoord は使えません");
-  const loops = checkLoopsBounded(source);
-  if (loops.ok !== true) errors.push(`ループの上限を確認できません: ${loops.detail}`);
+  if (bytes > SIZE_BUDGET_BYTES) errors.push(t.tooLarge(SIZE_BUDGET_BYTES, bytes));
+  if (!hasRenderSignature(source)) errors.push(t.noRender);
+  if (source.includes("gl_FragCoord")) errors.push(t.noFragCoord);
+  const loops = checkLoopsBounded(source, t);
+  if (loops.ok !== true) errors.push(t.loopsUnchecked(loops.detail));
   return errors;
 }
 
@@ -138,41 +121,41 @@ export interface Submission {
 
 export type ValidationResult = { ok: true; value: Submission } | { ok: false; errors: string[] };
 
-export function validateSubmission(input: unknown): ValidationResult {
+export function validateSubmission(input: unknown, t: Dictionary["submission"]): ValidationResult {
   if (typeof input !== "object" || input === null) {
-    return { ok: false, errors: ["本文が JSON オブジェクトではありません"] };
+    return { ok: false, errors: [t.notObject] };
   }
   const raw = input as Record<string, unknown>;
   const errors: string[] = [];
 
   const title = typeof raw.title === "string" ? raw.title.trim() : "";
-  if (!title) errors.push("タイトルを入力してください");
-  else if (title.length > TITLE_MAX) errors.push(`タイトルは ${TITLE_MAX} 文字以内にしてください`);
+  if (!title) errors.push(t.titleRequired);
+  else if (title.length > TITLE_MAX) errors.push(t.titleTooLong(TITLE_MAX));
 
   const source = typeof raw.source === "string" ? raw.source : "";
   const bytes = byteLength(source);
-  errors.push(...sourceErrors(source));
+  errors.push(...sourceErrors(source, t));
 
   // 以前の投稿で選べたライセンス(CC0 など)は、新しい投稿では受け付けない
   const license = LICENSES.find((l) => l.id === raw.license && l.selectable)?.id;
-  if (!license) errors.push("ライセンスを選んでください");
+  if (!license) errors.push(t.chooseLicense);
 
   const visibilityInput = raw.visibility;
   const visibility: WorkVisibility = visibilityInput === "private" ? "private" : "public";
   if (visibilityInput !== undefined && visibilityInput !== "public" && visibilityInput !== "private") {
-    errors.push("公開範囲を選んでください");
+    errors.push(t.chooseVisibility);
   }
 
   const authorRaw = typeof raw.author === "string" ? raw.author.trim() : "";
-  if (authorRaw.length > AUTHOR_MAX) errors.push(`名前は ${AUTHOR_MAX} 文字以内にしてください`);
+  if (authorRaw.length > AUTHOR_MAX) errors.push(t.authorTooLong(AUTHOR_MAX));
 
   const description = typeof raw.description === "string" ? raw.description.trim() : "";
-  if (description.length > DESCRIPTION_MAX) errors.push(`説明は ${DESCRIPTION_MAX} 文字以内にしてください`);
+  if (description.length > DESCRIPTION_MAX) errors.push(t.descriptionTooLong(DESCRIPTION_MAX));
 
   const tags = normalizeTags(raw.tags);
-  if (tags.length > TAGS_MAX) errors.push(`タグは ${TAGS_MAX} 個までです`);
-  const badTag = tags.find((t) => !TAG_PATTERN.test(t));
-  if (badTag !== undefined) errors.push(`タグは英小文字・数字・ハイフンで 24 文字以内にしてください: ${badTag}`);
+  if (tags.length > TAGS_MAX) errors.push(t.tooManyTags(TAGS_MAX));
+  const badTag = tags.find((tag) => !TAG_PATTERN.test(tag));
+  if (badTag !== undefined) errors.push(t.badTag(badTag));
 
   if (errors.length > 0 || !license) return { ok: false, errors };
   return {
