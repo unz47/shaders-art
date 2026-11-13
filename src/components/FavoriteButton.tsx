@@ -5,6 +5,7 @@ import { type MouseEvent, useState } from "react";
 import { Button } from "@frost-ui/react/atoms/button";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { HeartIcon } from "@/components/HeartIcon";
+import { useI18n } from "@/lib/i18n/client";
 import { favoriteCountOf, toggleFavorite, useFavorites } from "@/lib/useFavorites";
 import { loginHref, useSession } from "@/lib/useSession";
 import type { WorkSummary } from "@/lib/works";
@@ -26,11 +27,12 @@ export function FavoriteButton({
   const pathname = usePathname();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const { t } = useI18n();
 
   if (session.status !== "ready" || !session.configured) return null;
 
   const favorited = favorites.status === "ready" && favorites.favorited.has(work.slug);
-  const label = favorited ? "お気に入りから外す" : "お気に入りに追加";
+  const label = favorited ? t.favorite.remove : t.favorite.add;
 
   async function onClick(event: MouseEvent) {
     // カードやタイルの上に重ねて置くので、下のリンク(作品ページへの移動)に伝えない
@@ -46,7 +48,7 @@ export function FavoriteButton({
     try {
       await toggleFavorite(work.slug);
     } catch {
-      toast.add({ title: "お気に入りを変えられませんでした", description: "時間をおいてもう一度お試しください", priority: "high" });
+      toast.add({ title: t.favorite.failed, description: t.favorite.retryLater, priority: "high" });
     } finally {
       setBusy(false);
     }
@@ -85,13 +87,14 @@ export function FavoriteCount({
   className?: string;
 }) {
   const favorites = useFavorites();
+  const { t } = useI18n();
   const count = favoriteCountOf(work, favorites);
   if (count <= 0) return null;
   return (
     <span className={`inline-flex items-center gap-1 font-mono ${className}`}>
       <HeartIcon filled className="size-3" />
-      <span>{count}</span>
-      <span className="sr-only">人がお気に入り</span>
+      <span aria-hidden="true">{count}</span>
+      <span className="sr-only">{t.favorite.countLabel(count)}</span>
     </span>
   );
 }

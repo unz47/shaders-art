@@ -15,23 +15,33 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@frost-ui/react/organisms/menu";
+import { SearchBox } from "@/components/SearchBox";
 import { avatarBackground, avatarInitial } from "@/lib/avatar";
+import { useI18n } from "@/lib/i18n/client";
 import { loginHref, type SessionUser, useSession } from "@/lib/useSession";
 import moonIcon from "@/icons/moon.svg";
 import searchIcon from "@/icons/search.svg";
 
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
-// 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/テーマ切り替え
+// 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/テーマ切り替え。検索は /works?q=… に送る
 // Rooms は行き先が未設計のため削除。
 // 投稿にはログインが要る(2026-09-27 の方針)。未ログインなら Sign in、ログイン中なら
 // アバター(押すとメールアドレス・お気に入り・自分の作品・Sign out のメニュー)を一番右に出す。
 // 閲覧はログイン不要。作品を作る入口はナビの Edit だけにする(Submit ボタンは同じ行き先なので外した)。
-export function Header({ showSearch = true }: { showSearch?: boolean }) {
+export function Header({
+  showSearch = true,
+  searchQuery = "",
+}: {
+  showSearch?: boolean;
+  /** 検索欄に入れておく言葉(/works の検索結果を出しているとき) */
+  searchQuery?: string;
+}) {
   // 作品詳細ページ(/s/...)と「すべての作品」(/works)も Gallery の一部として扱い、現在地の下線を出す
   const pathname = usePathname();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/") || pathname.startsWith("/works");
   const editActive = pathname.startsWith("/edit");
   const session = useSession();
+  const { t } = useI18n();
 
   // 初期値は layout.tsx の先読みスクリプトが既に適用した data-theme から読む
   // (SSR時は document が無いので light 決め打ち。ずれても下の suppressHydrationWarning で吸収)
@@ -79,11 +89,20 @@ export function Header({ showSearch = true }: { showSearch?: boolean }) {
 
       <div className="ml-auto flex items-center gap-sp-sm">
         {showSearch && (
-          // 検索はまだ飾り。狭い画面では場所を取ってヘッダーがはみ出すので出さない
-          <div className="hidden h-8 w-60 items-center gap-sp-xs rounded-control border border-border-subtle bg-bg-raised pl-sp-sm pr-1.5 md:flex">
-            <Image src={searchIcon} alt="" width={16} height={16} />
-            <span className="text-sm text-text-muted">Search works…</span>
-          </div>
+          <>
+            {/* 検索語が変わったら(「すべての作品を見る」で消したときなど)入力欄も合わせる */}
+            <div className="hidden w-60 md:block">
+              <SearchBox key={searchQuery} defaultValue={searchQuery} shortcut />
+            </div>
+            {/* 狭い画面では検索欄が場所を取ってヘッダーがはみ出すので、虫めがねだけにして /works の検索欄に送る */}
+            <Link
+              href="/works"
+              aria-label={t.header.search}
+              className="flex size-8 items-center justify-center rounded-control border border-border-subtle md:hidden"
+            >
+              <Image src={searchIcon} alt="" width={16} height={16} />
+            </Link>
+          </>
         )}
         <button
           onClick={toggleTheme}
@@ -93,7 +112,7 @@ export function Header({ showSearch = true }: { showSearch?: boolean }) {
             theme === "dark" ? "bg-bg-raised" : "bg-bg-base"
           }`}
         >
-          <Image src={moonIcon} alt="ダークモード切り替え" width={16} height={16} />
+          <Image src={moonIcon} alt={t.header.themeToggle} width={16} height={16} />
         </button>
         {session.status === "ready" && session.user && <AccountMenu user={session.user} />}
         {session.status === "ready" && session.configured && !session.user && (
@@ -111,13 +130,14 @@ function AccountMenu({ user }: { user: SessionUser }) {
   // ログアウトは POST(GET だとプリフェッチなどで勝手に発火しうる)。メニューの中身は
   // ポップアップとして別の場所に描かれるので、フォームはメニューの外に置いて送る
   const logoutForm = useRef<HTMLFormElement>(null);
+  const { t } = useI18n();
 
   return (
     <>
       <form ref={logoutForm} action="/api/auth/logout" method="post" hidden />
       <Menu>
         <MenuTrigger
-          aria-label="アカウント"
+          aria-label={t.header.account}
           className="rounded-full transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-default"
         >
           <Avatar
@@ -129,14 +149,14 @@ function AccountMenu({ user }: { user: SessionUser }) {
         </MenuTrigger>
         <MenuContent align="end">
           <MenuGroup>
-            <MenuGroupLabel>ログイン中</MenuGroupLabel>
+            <MenuGroupLabel>{t.header.signedIn}</MenuGroupLabel>
             <div className="max-w-64 truncate px-sp-sm pb-sp-xs text-sm text-text-primary">
-              {user.email ?? "メールアドレス未設定"}
+              {user.email ?? t.header.noEmail}
             </div>
           </MenuGroup>
           <MenuSeparator />
-          <MenuItem render={<Link href="/me/favorites" />}>お気に入り</MenuItem>
-          <MenuItem render={<Link href="/me" />}>自分の作品</MenuItem>
+          <MenuItem render={<Link href="/me/favorites" />}>{t.header.favorites}</MenuItem>
+          <MenuItem render={<Link href="/me" />}>{t.header.myWorks}</MenuItem>
           <MenuItem onClick={() => logoutForm.current?.requestSubmit()}>Sign out</MenuItem>
         </MenuContent>
       </Menu>

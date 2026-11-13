@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { buildFragmentShader, VERTEX_SHADER } from "@/lib/glsl";
+import { useI18n } from "@/lib/i18n/client";
 import { renderStillUrl, STILL_TIME, stillSize } from "@/lib/stillRenderer";
 
 // 一覧カードのサムネ。
@@ -12,6 +13,7 @@ import { renderStillUrl, STILL_TIME, stillSize } from "@/lib/stillRenderer";
 // - ホバー再生: 常に何枚ぶんも WebGL を張り続けるのは重いので、ホバー中(+ attention が 0 に
 //   落ち着くまでの余韻)だけ canvas をマウントして描画する。
 export function ShaderThumbnail({ source, thumbnail, alt }: { source: string; thumbnail: string; alt: string }) {
+  const { t } = useI18n();
   const [active, setActive] = useState(false);
   const [visible, setVisible] = useState(false);
   const hoveredRef = useRef(false);
@@ -150,7 +152,7 @@ export function ShaderThumbnail({ source, thumbnail, alt }: { source: string; th
       )}
       {stillFailed && !thumbnail && (
         <div className="absolute inset-0 grid place-items-center font-mono text-[11px] tracking-wide text-text-muted">
-          プレビューできません
+          {t.preview.cannotPreview}
         </div>
       )}
       {active && (
