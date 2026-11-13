@@ -151,6 +151,9 @@ export const ja = {
     copyShadertoy: "Shadertoy 用にコピー",
     shadertoyHint: "Shadertoy の Image タブに貼り付けてください。",
     exportStage: "配信背景・埋め込み(投稿しなくても使える)",
+    openedFromLink: "コードを開きました",
+    openedFromLinkHint: "それまでの下書きには「元に戻す」で戻れます",
+    openLinkFailed: "リンクが壊れているため、コードを開けませんでした",
     imageFailed: "画像を書き出せませんでした",
     gifFailed: "GIF を書き出せませんでした",
     renderError: {

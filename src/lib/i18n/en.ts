@@ -150,6 +150,9 @@ export const en: Dictionary = {
     copyShadertoy: "Copy for Shadertoy",
     shadertoyHint: "Paste it into the Image tab on Shadertoy.",
     exportStage: "Stream background & embed (no need to post)",
+    openedFromLink: "Code opened",
+    openedFromLinkHint: "Use Undo to get your previous draft back",
+    openLinkFailed: "The link is broken, so the code couldn’t be opened",
     imageFailed: "Couldn’t export the image",
     gifFailed: "Couldn’t export the GIF",
     renderError: {
