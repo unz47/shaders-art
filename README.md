@@ -18,7 +18,7 @@ pnpm dev
 ```
 
 `pnpm verify`(型 + lint)が緑であることが完了条件。
-コミットの前に `pnpm check` を走らせておくと、CI で落ちる前に気づける。
+コミットの前に `pnpm verify` を走らせておくと、CI で落ちる前に気づける。
 
 既定では `/api` を叩く(`next dev` でも Route Handler が動くが、DynamoDB へのアクセス権と `TABLE_NAME` が要る)。
 バックエンド無しで UI だけ触りたいときは `NEXT_PUBLIC_API_MOCK=1 pnpm dev` で MSW のモックに切り替わる。
