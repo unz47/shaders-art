@@ -154,6 +154,8 @@ filter msg = "ai-blocked"
 
 ## デプロイ
 
+main に入ると GitHub Actions(`.github/workflows/deploy.yml`)が `cdk deploy --all` する。手元から出すときは:
+
 ```sh
 cd infra
 pnpm install
@@ -190,7 +192,26 @@ Cognito の確認メールは既定の送信元(1 日 50 通まで)で送って�
    `ShadersArtStack` が CloudFront に別名と証明書を付け、A / AAAA レコードを書き込む
 
 証明書の検証は、ホストゾーンが引けるようになってから数分かかる(その間 `cdk deploy` は待つ)。
-ホストゾーンを引く(`HostedZone.fromLookup`)ので、デプロイには AWS の認証情報が要る。引いた結果は `infra/cdk.context.json` に残る。
+ホストゾーンを引く(`HostedZone.fromLookup`)ので、デプロイには AWS の認証情報が要る。引いた結果は `infra/cdk.context.json` に残る
+(コミットしておくと、GitHub Actions のデプロイで引き直さずに済む)。
+
+### GitHub Actions からデプロイする(初回の準備)
+
+AWS には OIDC で入る(アクセスキーは置かない)。GitHub の OIDC プロバイダはアカウントにすでにある前提。
+
+1. 手元から、デプロイ用のロールを作る(1 回だけ。`--all` には入れていない)
+
+   ```sh
+   cd infra
+   pnpm cdk --app "node bin/github-deploy.ts" deploy ShadersArtGithubDeployStack
+   ```
+
+   ロール `shaders-art-github-deploy` が引き受けられるのは CDK のブートストラップのロール(`cdk-hnb659fds-*`)だけ。
+   信頼するのは、このリポジトリの environment `production` のジョブだけ
+2. GitHub に environment `production` を作り、Deployment branches を `main` だけにする
+3. リポジトリの Variables に `AWS_DEPLOY_ROLE_ARN`(1 の出力 `DeployRoleArn`)、`ADMIN_EMAILS`、`AI_UNLIMITED_EMAILS`、
+   必要なら `CLAUDE_WORKSPACE_ID` を入れる(中身は `deploy.yml` の先頭のコメント)
+4. Actions の Deploy を手で起動する(workflow_dispatch)か、main に push する
 
 ## アクセス解析
 

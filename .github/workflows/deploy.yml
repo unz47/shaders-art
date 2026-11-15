@@ -1,5 +1,15 @@
-# main への push で GitHub Pages に静的エクスポートを配置する。
-# カスタムドメイン(shaders.art)を当てるまでは /shaders-art 配下で配信されるので BASE_PATH を渡す。
+# main への push で、本番(AWS)に cdk deploy する。
+# AWS には OIDC で入る。引き受けるロールは infra/bin/github-deploy.ts が作る(README の「GitHub Actions からデプロイする」)。
+# ロールは environment "production" のジョブにしか渡らず、production は main ブランチからしか使えない。
+#
+# リポジトリの Variables(Settings → Secrets and variables → Actions → Variables)に入れておくもの:
+#   AWS_DEPLOY_ROLE_ARN   必須。ShadersArtGithubDeployStack の出力 DeployRoleArn
+#   ADMIN_EMAILS          運営のメールアドレス(カンマ区切り)。通報の一覧・作品の非公開と削除ができる
+#   AI_UNLIMITED_EMAILS   AI を上限なしで使える人のメールアドレス(カンマ区切り)
+#   CLAUDE_WORKSPACE_ID   Claude Platform on AWS のワークスペース ID(wrkspc_…)。無ければ空
+# 公開リポジトリなので、メールアドレスは cdk.json に書かずにここから渡す。
+#
+# @frost-ui/* が npm 公開されるまでは、CI と同じく隣に design-system を checkout して link: を成立させる。
 name: Deploy
 
 on:
@@ -9,28 +19,42 @@ on:
 
 permissions:
   contents: read
-  pages: write
   id-token: write
 
+# デプロイの途中で次のデプロイを始めない(CloudFormation の更新が重なると片方が失敗する)。止めずに順番に待つ
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: shaders-art
     steps:
+      - name: デプロイ用のロールが設定されているか
+        env:
+          ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE" ]; then
+            echo '::error::リポジトリの Variables に AWS_DEPLOY_ROLE_ARN がありません。README の「GitHub Actions からデプロイする」を見てください。'
+            exit 1
+          fi
+        working-directory: .
+
       - uses: actions/checkout@v4
         with:
           path: shaders-art
+          persist-credentials: false
 
       - uses: actions/checkout@v4
         with:
           repository: unz47/design-system
           path: design-system
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
@@ -40,25 +64,45 @@ jobs:
         with:
           node-version-file: shaders-art/.nvmrc
           cache: pnpm
-          cache-dependency-path: shaders-art/pnpm-lock.yaml
+          cache-dependency-path: |
+            shaders-art/pnpm-lock.yaml
+            shaders-art/infra/pnpm-lock.yaml
+
+      - name: design-system の依存を入れる
+        run: pnpm install --frozen-lockfile
+        working-directory: design-system
 
       - run: pnpm install --frozen-lockfile
 
-      - name: 静的ビルド
-        run: pnpm build
-        env:
-          BASE_PATH: /shaders-art
+      # PR では CI が通っているが、main に入った形でももう一度確かめてから出す
+      - name: テスト
+        run: pnpm test
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: infra の依存を入れる
+        run: pnpm install --frozen-lockfile
+        working-directory: shaders-art/infra
+
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          path: shaders-art/out
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # OpenNext のビルド(next build → Lambda 用バンドル)も cdk deploy の中で走る
+      - name: cdk deploy
+        working-directory: shaders-art/infra
+        env:
+          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          AI_UNLIMITED_EMAILS: ${{ vars.AI_UNLIMITED_EMAILS }}
+          CLAUDE_WORKSPACE_ID: ${{ vars.CLAUDE_WORKSPACE_ID }}
+        run: |
+          pnpm cdk deploy --all --require-approval never --progress events \
+            -c "adminEmails=$ADMIN_EMAILS" \
+            -c "aiUnlimitedEmails=$AI_UNLIMITED_EMAILS" \
+            -c "claudeWorkspaceId=$CLAUDE_WORKSPACE_ID"
+
+      - name: 本番の URL
+        working-directory: shaders-art/infra
+        run: |
+          url=$(aws cloudformation describe-stacks --stack-name ShadersArtStack \
+            --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text)
+          echo "本番: $url" | tee -a "$GITHUB_STEP_SUMMARY"
