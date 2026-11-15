@@ -49,6 +49,8 @@ export class ShadersArtStack extends Stack {
       aiUnlimitedEmails,
       adminEmails,
       domain: props.domainName && props.certificate ? { domainName: props.domainName, certificate: props.certificate } : undefined,
+      // -c skipBuild=true で、すでにある .open-next を使う(GitHub Actions のデプロイ)
+      skipBuild: this.node.tryGetContext("skipBuild") === "true",
     });
 
     new CfnOutput(this, "SiteUrl", { value: nextjs.url });

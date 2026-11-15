@@ -10,12 +10,17 @@ export interface GithubDeployStackProps extends StackProps {
 }
 
 // GitHub Actions(.github/workflows/deploy.yml)が cdk deploy するときに引き受ける IAM ロール。
-// 本体とは別のアプリ(bin/github-deploy.ts)にしてあり、`cdk deploy --all` では作り直さない。
-// デプロイのジョブが自分の権限を書き換えられないようにするため。手元から 1 回だけデプロイする。
+// 本体とは別のアプリ(bin/github-deploy.ts)にしてあり、`cdk deploy --all` では作り直さない。手元から 1 回だけデプロイする。
 //
-// このロール自身はほとんど何もできない。できるのは CDK のブートストラップが作ったロール
-// (cdk-hnb659fds-*: デプロイ・アセットの置き場・ルックアップ)を引き受けることだけで、
-// 実際の変更は CloudFormation がそちらの権限で行う。
+// このロールに直接付けるのは、CDK のブートストラップが作ったロール(cdk-hnb659fds-*: デプロイ・アセットの置き場・
+// ルックアップ)を引き受ける権限だけ。ただしデプロイ用のロールを通して CloudFormation の実行ロール
+// (ブートストラップの既定では AdministratorAccess)を使えるので、**実質的にアカウントの管理者と同じことができる**
+// (このロール自身の書き換えも含む)。だから、このロールで動くコードを人間が読んだものだけに絞っている:
+//   - 引き受けられるのは environment production のジョブだけで、production は main からしか使えない
+//   - Next.js のビルド(src/ のコードが動く)は、認証情報の無い別のジョブで済ませる
+//   - 認証情報のあるジョブで動く infra/ と src/lib/aiModels.ts、.github/ は、AI だけではマージされない
+//     (.github/ai-review/human-required.txt)
+// 権限をさらに絞るなら、ブートストラップの --cloudformation-execution-policies を必要なものだけにする。
 export class GithubDeployStack extends Stack {
   constructor(scope: Construct, id: string, props: GithubDeployStackProps) {
     super(scope, id, props);

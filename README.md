@@ -206,12 +206,18 @@ AWS には OIDC で入る(アクセスキーは置かない)。GitHub の OIDC �
    pnpm cdk --app "node bin/github-deploy.ts" deploy ShadersArtGithubDeployStack
    ```
 
-   ロール `shaders-art-github-deploy` が引き受けられるのは CDK のブートストラップのロール(`cdk-hnb659fds-*`)だけ。
-   信頼するのは、このリポジトリの environment `production` のジョブだけ
+   ロール `shaders-art-github-deploy` に直接付けるのは CDK のブートストラップのロール(`cdk-hnb659fds-*`)を引き受ける権限だけ。
+   ただし CloudFormation を通して管理者と同じことができるので、信頼するのはこのリポジトリの environment `production` のジョブだけにし、
+   そのジョブで動くコードも絞っている(下)
 2. GitHub に environment `production` を作り、Deployment branches を `main` だけにする
 3. リポジトリの Variables に `AWS_DEPLOY_ROLE_ARN`(1 の出力 `DeployRoleArn`)、`ADMIN_EMAILS`、`AI_UNLIMITED_EMAILS`、
    必要なら `CLAUDE_WORKSPACE_ID` を入れる(中身は `deploy.yml` の先頭のコメント)
 4. Actions の Deploy を手で起動する(workflow_dispatch)か、main に push する
+
+Deploy は 2 つのジョブに分かれている。`build` は AWS の認証情報を持たずに OpenNext でビルドし(`src/` のコードが動くのはここだけ)、
+`deploy` はその成果物を受け取って `cdk deploy -c skipBuild=true` だけをする。`deploy` で動くのは `infra/` と `src/lib/aiModels.ts` で、
+どちらも AI のレビューだけではマージされない(`.github/ai-review/human-required.txt`)。OpenNext の版は `deploy.yml` と
+`infra/lib/nextjs-site.ts` の両方で固定している。
 
 ## アクセス解析
 

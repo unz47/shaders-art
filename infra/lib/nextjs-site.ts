@@ -31,6 +31,11 @@ export interface NextjsSiteProps {
    * A / AAAA レコードを書き込む。証明書は us-east-1 にしか置けないので WafStack が作る
    */
   domain?: { domainName: string; certificate: ICertificate };
+  /**
+   * OpenNext のビルドを省き、すでにある .open-next を使う。GitHub Actions のデプロイでは、ビルドを
+   * AWS の認証情報の無い別のジョブで済ませて成果物を渡すので true にする(.github/workflows/deploy.yml)
+   */
+  skipBuild?: boolean;
 }
 
 // AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
@@ -39,6 +44,9 @@ export interface NextjsSiteProps {
 // 使えるのは Sonnet 4.6 と Haiku 4.5 だけ。解除は AWS サポートに依頼する)、いまはコードに強い Qwen3 Coder にしている。
 // 呼び方の違いは src/lib/server/ai.ts。
 const AI_MODEL = "qwen.qwen3-coder-480b-a35b-v1:0";
+
+// OpenNext(Next.js を Lambda 用に組み直すツール)の版。.github/workflows/deploy.yml の OPEN_NEXT_VERSION と合わせる
+const OPEN_NEXT_VERSION = "3.10.4";
 
 // 日本国内で処理する推論プロファイル(jp.)の行き先。プロファイルを通すと、このどちらかで推論する
 const JP_PROFILE_REGIONS = ["ap-northeast-1", "ap-northeast-3"];
@@ -52,7 +60,7 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails, adminEmails, domain } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails, adminEmails, domain, skipBuild } = props;
 
     // SSR Lambda のログ(アクセス解析の "pv" と、AI の原価の "ai-edit" を含む)は 13 か月残す(前年の同じ月と比べられるように)。
     // 指定しないと Lambda が自動で作るロググループは無期限になる。変えたら利用規約の「利用状況の記録」も直すこと
@@ -65,7 +73,9 @@ export class NextjsSite extends Construct {
       // コンストラクトの既定値と同じだが、意図を明示するために書いておく。
       // OpenNext v3系がNext.js 16に対応している。ルートのpackage.jsonには
       // OpenNextを入れない(ここで使うのはnpx経由のこのバージョンだけ)。
-      buildCommand: "npx --yes @opennextjs/aws@^3 build",
+      // 版は固定する(.github/workflows/deploy.yml のビルドのジョブと同じ版にすること)
+      buildCommand: `npx --yes @opennextjs/aws@${OPEN_NEXT_VERSION} build`,
+      skipBuild,
       // AI と作る(POST /api/ai/edit)の返答を少しずつ返すため、Function URL の応答をストリーミングにする。
       // OpenNext 側もストリーミング用のラッパーにする必要がある(リポジトリ直下の open-next.config.ts)。
       streaming: true,

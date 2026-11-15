@@ -225,15 +225,22 @@ async function updateWork(
   }
 }
 
-/** 行をまとめて消す(BatchWrite は 1 回 25 件まで。処理しきれなかった分は送り直す) */
+/**
+ * 行をまとめて消す(BatchWrite は 1 回 25 件まで。処理しきれなかった分は、間をあけて送り直す)。
+ * 送り直しても残ったら例外にする(黙って残すと、プライバシーポリシーの「すぐに消えます」と食い違う)
+ */
 async function deleteRows(rows: Record<string, unknown>[]): Promise<void> {
   for (let i = 0; i < rows.length; i += 25) {
-    let requests: { DeleteRequest: { Key: Record<string, unknown> } }[] | undefined = rows
+    let requests: { DeleteRequest: { Key: Record<string, unknown> } }[] = rows
       .slice(i, i + 25)
       .map((row) => ({ DeleteRequest: { Key: { slug: row.slug } } }));
-    for (let attempt = 0; requests && requests.length > 0 && attempt < 5; attempt++) {
+    for (let attempt = 0; requests.length > 0; attempt++) {
+      if (attempt === 5) {
+        throw new Error(`行を消しきれませんでした: ${requests.map((r) => String(r.DeleteRequest.Key.slug)).join(", ")}`);
+      }
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
       const res = await db.send(new BatchWriteCommand({ RequestItems: { [tableName()]: requests } }));
-      requests = res.UnprocessedItems?.[tableName()] as typeof requests;
+      requests = (res.UnprocessedItems?.[tableName()] ?? []) as typeof requests;
     }
   }
 }

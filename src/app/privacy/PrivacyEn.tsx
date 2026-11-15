@@ -74,8 +74,9 @@ export function PrivacyEn() {
         </P>
         <P>
           When you report a work, we keep which account reported which work, when, for which reason, and any details
-          you added. The operator uses this to review the work. That you reported it, and the number of reports, are
+          you added. The operator uses this to review the work. Who reported a work and the number of reports are
           not shown to other users, including the author. The operator’s screen does not show who reported it either.
+          When several reports make a work private automatically, the author is told only that.
         </P>
 
         <H3 id="ai">2.4 Make with AI</H3>

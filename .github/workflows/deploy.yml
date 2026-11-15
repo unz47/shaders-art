@@ -1,6 +1,11 @@
 # main への push で、本番(AWS)に cdk deploy する。
 # AWS には OIDC で入る。引き受けるロールは infra/bin/github-deploy.ts が作る(README の「GitHub Actions からデプロイする」)。
-# ロールは environment "production" のジョブにしか渡らず、production は main ブランチからしか使えない。
+#
+# ジョブを 2 つに分けている:
+#   build  … Next.js を OpenNext で Lambda 用に組み立てる。src/ のコードが動くので、AWS の認証情報を持たせない
+#   deploy … 組み立てた .open-next を受け取り、ビルドを省いて cdk deploy だけをする。ここで動くのは infra/ と
+#            src/lib/aiModels.ts だけで、どちらも AI のレビューだけではマージされない(.github/ai-review/human-required.txt)
+# デプロイのロールは CloudFormation を通して管理者と同じことができるので、認証情報のあるところで動くコードを絞っている。
 #
 # リポジトリの Variables(Settings → Secrets and variables → Actions → Variables)に入れておくもの:
 #   AWS_DEPLOY_ROLE_ARN   必須。ShadersArtGithubDeployStack の出力 DeployRoleArn
@@ -19,32 +24,24 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 # デプロイの途中で次のデプロイを始めない(CloudFormation の更新が重なると片方が失敗する)。止めずに順番に待つ
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+env:
+  # infra/lib/nextjs-site.ts の OPEN_NEXT_VERSION と同じにする
+  OPEN_NEXT_VERSION: 3.10.4
+
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment: production
-    timeout-minutes: 60
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: shaders-art
     steps:
-      - name: デプロイ用のロールが設定されているか
-        env:
-          ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-        run: |
-          if [ -z "$ROLE" ]; then
-            echo '::error::リポジトリの Variables に AWS_DEPLOY_ROLE_ARN がありません。README の「GitHub Actions からデプロイする」を見てください。'
-            exit 1
-          fi
-        working-directory: .
-
       - uses: actions/checkout@v4
         with:
           path: shaders-art
@@ -64,9 +61,7 @@ jobs:
         with:
           node-version-file: shaders-art/.nvmrc
           cache: pnpm
-          cache-dependency-path: |
-            shaders-art/pnpm-lock.yaml
-            shaders-art/infra/pnpm-lock.yaml
+          cache-dependency-path: shaders-art/pnpm-lock.yaml
 
       - name: design-system の依存を入れる
         run: pnpm install --frozen-lockfile
@@ -78,30 +73,84 @@ jobs:
       - name: テスト
         run: pnpm test
 
-      - name: infra の依存を入れる
-        run: pnpm install --frozen-lockfile
+      # cdk deploy の中で走るビルドと同じもの。ビルド時に埋め込まれる環境変数は NEXT_PUBLIC_API_BASE だけ
+      # (ほかは Lambda の環境変数として実行時に読む。infra/lib/nextjs-site.ts の environment)
+      - name: OpenNext でビルド
+        run: npx --yes "@opennextjs/aws@${OPEN_NEXT_VERSION}" build
+        env:
+          NEXT_PUBLIC_API_BASE: /api
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-next
+          path: shaders-art/.open-next
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
         working-directory: shaders-art/infra
+    steps:
+      - name: デプロイ用のロールが設定されているか
+        env:
+          ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE" ]; then
+            echo '::error::リポジトリの Variables に AWS_DEPLOY_ROLE_ARN がありません。README の「GitHub Actions からデプロイする」を見てください。'
+            exit 1
+          fi
+        working-directory: .
+
+      - uses: actions/checkout@v4
+        with:
+          path: shaders-art
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: shaders-art/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: shaders-art/.nvmrc
+          cache: pnpm
+          cache-dependency-path: shaders-art/infra/pnpm-lock.yaml
+
+      # infra の依存だけを入れる(アプリの依存は入れない。認証情報のあるジョブで動くものを減らす)
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: open-next
+          path: shaders-art/.open-next
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ap-northeast-1
 
-      # OpenNext のビルド(next build → Lambda 用バンドル)も cdk deploy の中で走る
       - name: cdk deploy
-        working-directory: shaders-art/infra
         env:
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
           AI_UNLIMITED_EMAILS: ${{ vars.AI_UNLIMITED_EMAILS }}
           CLAUDE_WORKSPACE_ID: ${{ vars.CLAUDE_WORKSPACE_ID }}
         run: |
           pnpm cdk deploy --all --require-approval never --progress events \
+            -c skipBuild=true \
             -c "adminEmails=$ADMIN_EMAILS" \
             -c "aiUnlimitedEmails=$AI_UNLIMITED_EMAILS" \
             -c "claudeWorkspaceId=$CLAUDE_WORKSPACE_ID"
 
       - name: 本番の URL
-        working-directory: shaders-art/infra
         run: |
           url=$(aws cloudformation describe-stacks --stack-name ShadersArtStack \
             --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text)
