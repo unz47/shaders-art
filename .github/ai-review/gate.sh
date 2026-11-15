@@ -144,6 +144,11 @@ decide() {
 
   post
 
+  # 要修正で、人間に回すパスを触っていなければ、自動修正(ai-fix)に回す。
+  if [ "$state" = changes ] && [ ! -s "$human_file" ]; then
+    echo 'fix=true' >>"${GITHUB_OUTPUT:-/dev/null}"
+  fi
+
   case "$state" in
     incomplete)
       echo '::error::レビューの結果を受け取れませんでした。'

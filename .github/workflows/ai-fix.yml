@@ -1,0 +1,101 @@
+# ai-review が「要修正」を出したとき、指摘を Claude に直させて PR に push する。
+# push すると CI と ai-review がもう一度走り、通れば(自動マージを予約していれば)そのままマージされる。
+#
+# 起動するのは ai-review ジョブだけ(workflow_dispatch、ref は既定ブランチ)。
+# なのでこのファイルと .github/ai-review/ は必ず main 側の版で動く。
+#
+# 守っていること:
+# - 修正役の Claude が読み書きできるのは pr-head/ の中だけ(guard.mjs のフックで止める)。道具に Bash は無い
+# - 人間に回すパス(human-required.txt)を書き換えていたら push しない
+# - 自動修正は 1 つの PR につき MAX_ATTEMPTS 回まで。超えたら人間に回す
+# - push 用のトークンは push のステップにしか渡さない
+name: AI Fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 直す PR の番号
+        required: true
+        type: string
+      head_sha:
+        description: レビューしたコミット。PR の head がこれから動いていたら何もしない
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-fix-${{ inputs.pr }}
+  cancel-in-progress: false
+
+env:
+  FIX_MODEL: claude-opus-5-5
+  # 1 回の修正で使ってよい上限(USD)。
+  FIX_MAX_USD: "4"
+  # 1 つの PR で自動修正を試す回数の上限。
+  MAX_ATTEMPTS: "2"
+
+jobs:
+  ai-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: push 用のトークンがあるか確かめる
+        env:
+          AI_FIX_TOKEN: ${{ secrets.AI_FIX_TOKEN }}
+        run: |
+          if [ -z "$AI_FIX_TOKEN" ]; then
+            echo "::error::シークレット AI_FIX_TOKEN が未設定です。"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: 直してよい PR か確かめる
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+        run: bash .github/ai-review/fix-gate.sh check
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.run == 'true'
+        with:
+          ref: ${{ inputs.head_sha }}
+          path: pr-head
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.run == 'true'
+        with:
+          node-version: 24
+
+      - name: Agent SDK を入れる
+        if: steps.check.outputs.run == 'true'
+        run: npm ci --ignore-scripts
+        working-directory: .github/ai-review
+
+      - name: Claude に直させる
+        if: steps.check.outputs.run == 'true'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node .github/ai-review/fix.mjs
+
+      - name: 変更を確かめて push する
+        if: steps.check.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr }}
+          BRANCH: ${{ steps.check.outputs.branch }}
+          ATTEMPT: ${{ steps.check.outputs.attempt }}
+          AI_FIX_TOKEN: ${{ secrets.AI_FIX_TOKEN }}
+        run: bash .github/ai-review/fix-gate.sh apply

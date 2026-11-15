@@ -10,6 +10,7 @@
 // 環境変数: ANTHROPIC_API_KEY、REVIEW_MODEL、REVIEW_MAX_USD(1 回の上限。超えそうなら打ち切る)
 import { readFileSync, writeFileSync } from "node:fs";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { pathGuard } from "./guard.mjs";
 
 const here = new URL(".", import.meta.url);
 const schema = JSON.parse(readFileSync(new URL("schema.json", here), "utf8"));
@@ -33,6 +34,10 @@ try {
       tools: ["Read", "Grep", "Glob"],
       permissionMode: "dontAsk",
       // 外部の MCP サーバーは一切つながない。
+      // 権限モードに加えて、シンボリックリンクの先まで確かめて外を読ませない。書き込みは一切させない。
+      hooks: {
+        PreToolUse: [{ hooks: [pathGuard({ cwd: process.cwd(), readRoots: [process.cwd()], writeRoots: [] })] }],
+      },
       mcpServers: {},
       strictMcpConfig: true,
       // PR 側が置いた設定や指示ファイルを自動では読み込ませない。

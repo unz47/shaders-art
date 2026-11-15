@@ -17,6 +17,8 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # 要修正のとき ai-fix ワークフローを起動するため。
+  actions: write
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
@@ -102,6 +104,7 @@ jobs:
         run: node .github/ai-review/review.mjs
 
       - name: 判定を PR に書いてゲートを決める
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -110,3 +113,15 @@ jobs:
           PATCH_ID: ${{ steps.prep.outputs.patch_id }}
           REUSE: ${{ steps.previous.outputs.reuse }}
         run: bash .github/ai-review/gate.sh decide
+
+      # ai-fix はこのジョブの結果を待たずに別のワークフローとして動く。
+      # ここで起動するので、ai-fix.yml は必ず既定ブランチの版で動く。
+      - name: 指摘の自動修正を起動する
+        if: failure() && steps.gate.outputs.fix == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh workflow run ai-fix.yml --ref "$DEFAULT_BRANCH" -f pr="$PR_NUMBER" -f head_sha="$HEAD_SHA"
