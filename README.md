@@ -260,3 +260,16 @@ filter msg = "pv"
 ```
 
 `count_distinct` は件数が多いと近似値になる。
+
+## PR のレビュー
+
+PR を開くと、CI(`verify`)に加えてレビュー専用の Claude が差分を読み、結果を PR にコメントする(`ai-review`)。
+
+- OK なら `ai-review` が緑になる。要修正の指摘があるか、レビューが完走しなければ赤になる。提案だけなら緑のまま
+- `.github/`、`infra/`、依存の指定、認証まわりなどを触る PR は、AI が OK でも緑にならない。人間が読んでマージする
+  (対象は `.github/ai-review/human-required.txt`)
+- 動くのは、マージ先のブランチに `.github/workflows/ai-review.yml` がある PR だけ(いまは main 向け)
+- ドラフトの PR では動かず、ready for review にしたときに動く。fork からの PR はレビューせず常に赤になる(人間がマージする)
+- モデルと 1 回あたりの上限額は `.github/workflows/ai-review.yml` の `env` で変える
+- 要修正になったら、修正役の Claude が指摘を直して PR のブランチに push する(`ai-fix`。2 回まで。人間行きの PR は直さない)。
+  push には専用のトークン(Secrets の `AI_FIX_TOKEN`)を使う。`GITHUB_TOKEN` の push では CI とレビューが走り直さないため

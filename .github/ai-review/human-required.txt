@@ -1,0 +1,22 @@
+# ここに当たるファイルを触る PR は、AI が OK を出しても ai-review を緑にしない。
+# 人間が読んでからマージする。1 行 1 パターン(拡張正規表現、リポジトリルートからのパス)。
+
+# CI / デプロイと、このレビューの仕組みそのもの
+^\.github/
+
+# レビュー役とコーディングエージェントが読む指示
+^(CLAUDE|AGENTS)\.md$
+^\.claude/
+
+# インフラ
+^infra/
+
+# 依存とランタイムの指定
+^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.nvmrc)$
+
+# 環境変数
+^\.env
+
+# 認証
+^src/app/api/auth/
+^src/lib/server/(oauth|session)\.
