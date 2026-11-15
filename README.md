@@ -87,3 +87,13 @@ Cognito のコールバック URL には本番のオリジンが要るが、Clou
 CloudFront のドメインは作り直さない限り変わらない。独自ドメインを当てたら `siteUrl` をそれに差し替える。
 
 Cognito の確認メールは既定の送信元(1 日 50 通まで)で送っている。利用者が増えたら SES に切り替える。
+
+## PR のレビュー
+
+PR を開くと、CI(`verify`)に加えてレビュー専用の Claude が差分を読み、結果を PR にコメントする(`ai-review`)。
+
+- OK なら `ai-review` が緑になる。指摘があるか、レビューが完走しなければ赤になる
+- `.github/`、`infra/`、依存の指定、認証まわりなどを触る PR は、AI が OK でも緑にならない。人間が読んでマージする
+  (対象は `.github/ai-review/human-required.txt`)
+- 動くのは、マージ先のブランチに `.github/workflows/ai-review.yml` がある PR だけ(いまは main 向け)
+- モデルと 1 回あたりの上限額は `.github/workflows/ai-review.yml` の `env` で変える
