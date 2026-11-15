@@ -1,15 +1,35 @@
 import { CfnOutput, Stack, type StackProps } from "aws-cdk-lib";
+import { Certificate, CertificateValidation } from "aws-cdk-lib/aws-certificatemanager";
+import { HostedZone } from "aws-cdk-lib/aws-route53";
 import { CfnWebACL } from "aws-cdk-lib/aws-wafv2";
 import type { Construct } from "constructs";
 
-// WAF(CLOUDFRONT スコープ)は us-east-1 でしか作れない。
+export interface WafStackProps extends StackProps {
+  /** 独自ドメイン(例: shaders.art)。あれば、その証明書もここで作る */
+  domainName?: string;
+}
+
+// WAF(CLOUDFRONT スコープ)と、CloudFront に付ける証明書(ACM)は us-east-1 でしか作れない。
 // 本体(ShadersArtStack)は利用者に近い ap-northeast-1(東京)に置きたいので、
-// WAF だけをこの独立したスタックに分け、ARN をクロスリージョンで渡す。
+// この 2 つだけをこの独立したスタックに分け、ARN をクロスリージョンで渡す。
 export class WafStack extends Stack {
   readonly webAcl: CfnWebACL;
+  /** domainName を渡したときだけ作る */
+  readonly certificate?: Certificate;
 
-  constructor(scope: Construct, id: string, props?: StackProps) {
+  constructor(scope: Construct, id: string, props: WafStackProps = {}) {
     super(scope, id, props);
+
+    if (props.domainName) {
+      // DNS で検証する。ホストゾーンは Route 53 に先に作っておく(Route 53 でドメインを買えば自動で作られる)。
+      // 検証用の CNAME はこのスタックが書き込むので、ホストゾーンが同じアカウントにあればデプロイだけで済む
+      const hostedZone = HostedZone.fromLookup(this, "HostedZone", { domainName: props.domainName });
+      this.certificate = new Certificate(this, "Certificate", {
+        domainName: props.domainName,
+        validation: CertificateValidation.fromDns(hostedZone),
+      });
+      new CfnOutput(this, "CertificateArn", { value: this.certificate.certificateArn });
+    }
 
     this.webAcl = new CfnWebACL(this, "Waf", {
       scope: "CLOUDFRONT",

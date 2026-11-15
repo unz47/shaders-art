@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Duration, Stack } from "aws-cdk-lib";
+import type { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
@@ -25,6 +26,11 @@ export interface NextjsSiteProps {
   aiUnlimitedEmails?: string;
   /** 運営のメールアドレス。カンマ区切り。通報の一覧・作品の非公開と削除ができる(src/lib/moderation) */
   adminEmails?: string;
+  /**
+   * 独自ドメイン。Route 53 のホストゾーン(同じアカウント)を引き、CloudFront に別名と証明書を付けて、
+   * A / AAAA レコードを書き込む。証明書は us-east-1 にしか置けないので WafStack が作る
+   */
+  domain?: { domainName: string; certificate: ICertificate };
 }
 
 // AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
@@ -46,7 +52,7 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails, adminEmails } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails, adminEmails, domain } = props;
 
     // SSR Lambda のログ(アクセス解析の "pv" と、AI の原価の "ai-edit" を含む)は 13 か月残す(前年の同じ月と比べられるように)。
     // 指定しないと Lambda が自動で作るロググループは無期限になる。変えたら利用規約の「利用状況の記録」も直すこと
@@ -63,6 +69,7 @@ export class NextjsSite extends Construct {
       // AI と作る(POST /api/ai/edit)の返答を少しずつ返すため、Function URL の応答をストリーミングにする。
       // OpenNext 側もストリーミング用のラッパーにする必要がある(リポジトリ直下の open-next.config.ts)。
       streaming: true,
+      ...(domain ? { domainProps: { domainName: domain.domainName, certificate: domain.certificate } } : {}),
       // ここに書いた値はビルド時と実行時(Lambda の環境変数)の両方に渡る。
       // NEXT_PUBLIC_ 以外のトークン値はビルド時には未解決の文字列になるので、
       // サーバー側のコードはモジュール読み込み時ではなくリクエスト時に読むこと。

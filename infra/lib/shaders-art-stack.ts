@@ -1,4 +1,5 @@
 import { CfnOutput, Stack, type StackProps } from "aws-cdk-lib";
+import type { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import type { Construct } from "constructs";
 import { Auth } from "./auth.ts";
 import { NextjsSite } from "./nextjs-site.ts";
@@ -7,6 +8,10 @@ import { WorksTable } from "./works-table.ts";
 export interface ShadersArtStackProps extends StackProps {
   /** WafStack(us-east-1)の Web ACL ARN。クロスリージョンで受け取る */
   webAclArn: string;
+  /** 独自ドメイン(例: shaders.art)。bin/shaders-art.ts が cdk.json の context "domainName" から渡す */
+  domainName?: string;
+  /** domainName の証明書(WafStack が us-east-1 で作ったもの) */
+  certificate?: ICertificate;
 }
 
 // 構成: 利用者 → CloudFront(+ WAF) → Lambda(SSR, Next.js本体 + Route Handler) → DynamoDB
@@ -20,8 +25,10 @@ export class ShadersArtStack extends Stack {
   constructor(scope: Construct, id: string, props: ShadersArtStackProps) {
     super(scope, id, props);
 
-    // 本番のオリジン。cdk.json の context "siteUrl"(理由は auth.ts の AuthProps.siteUrl)
-    const siteUrl = parseSiteUrl(this.node.tryGetContext("siteUrl"));
+    // 本番のオリジン。cdk.json の context "siteUrl"(理由は auth.ts の AuthProps.siteUrl)。
+    // 独自ドメインがあって siteUrl が空なら、そのドメインにする
+    const siteUrl =
+      parseSiteUrl(this.node.tryGetContext("siteUrl")) ?? (props.domainName ? `https://${props.domainName}` : undefined);
     // Claude Platform on AWS のワークスペース ID。cdk.json の context "claudeWorkspaceId"(無ければ Claude は選べない)
     const claudeWorkspaceId = parseWorkspaceId(this.node.tryGetContext("claudeWorkspaceId"));
     // AI を上限なしで使える人(運営)のメールアドレス(カンマ区切り)。公開リポジトリなので cdk.json には書かず、
@@ -41,6 +48,7 @@ export class ShadersArtStack extends Stack {
       claudeWorkspaceId,
       aiUnlimitedEmails,
       adminEmails,
+      domain: props.domainName && props.certificate ? { domainName: props.domainName, certificate: props.certificate } : undefined,
     });
 
     new CfnOutput(this, "SiteUrl", { value: nextjs.url });
