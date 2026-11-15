@@ -66,8 +66,10 @@ check() {
   gh api "repos/$REPO/issues/comments/$review_id" --jq .body >"$dir/review.md"
   head -n 1 "$dir/review.md" | grep -q ' state=changes -->$' || skip '最新のレビューが要修正ではない'
 
-  attempts=$(gh api "repos/$REPO/pulls/$PR_NUMBER/commits" --paginate --jq '.[].commit.message' |
-    grep -c '^AI-Fix-Attempt: ' || true)
+  # いったんファイルに受ける。パイプのまま grep -c || true にすると、gh api の失敗が握りつぶされて
+  # 0 回と数え、上限を見ないまま修正役が走ってしまう。
+  gh api "repos/$REPO/pulls/$PR_NUMBER/commits" --paginate --jq '.[].commit.message' >"$dir/commits.txt"
+  attempts=$(grep -c '^AI-Fix-Attempt: ' "$dir/commits.txt" || true)
   if [ "$attempts" -ge "$MAX_ATTEMPTS" ]; then
     {
       echo "$marker"
