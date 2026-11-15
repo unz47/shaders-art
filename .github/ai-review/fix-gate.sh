@@ -31,6 +31,8 @@ post() {
   fi
 }
 
+default_branch() { gh api "repos/$REPO" --jq .default_branch; }
+
 skip() {
   echo "自動修正しません: $1"
   out run=false
@@ -42,6 +44,9 @@ check() {
   [ "$(jq -r .state "$dir/pr.json")" = open ] || skip 'PR が開いていない'
   [ "$(jq -r .head.repo.full_name "$dir/pr.json")" = "$REPO" ] || skip 'fork からの PR'
   [ "$(jq -r .head.sha "$dir/pr.json")" = "$HEAD_SHA" ] || skip 'レビューのあとに push されている'
+  # main を head にした PR を直すと、修正がレビューを通らずに main へ直接 push されてしまう。
+  # push 用のトークンは管理者のものなので、ブランチ保護でも止まらない。
+  [ "$(jq -r .head.ref "$dir/pr.json")" != "$(default_branch)" ] || skip 'head が既定ブランチ'
 
   # --paginate の --jq はページごとに評価されるので、ID を集めてから最後の 1 件を取り直す。
   review_id=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
@@ -122,6 +127,11 @@ apply() {
   } >"$dir/comment.md"
 
   if [ -n "$structured" ] && [ -s "$dir/changed.txt" ] && [ ! -s "$dir/forbidden.txt" ]; then
+    # check でも止めているが、既定ブランチへの push だけは何があっても許さない。
+    if [ -z "$BRANCH" ] || [ "$BRANCH" = "$(default_branch)" ]; then
+      echo "::error::push 先が既定ブランチ(または空)なので push しません: '$BRANCH'"
+      exit 1
+    fi
     {
       echo "AI レビューの指摘を直す(自動修正 $ATTEMPT 回目)"
       echo
