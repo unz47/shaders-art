@@ -13,6 +13,7 @@ import { ShaderStage } from "@/components/ShaderStage";
 import { HiddenNotice, ReportButton, WorkManageMenu } from "@/components/WorkModeration";
 import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
 import { useI18n } from "@/lib/i18n/client";
+import { isPublicWork } from "@/lib/moderation";
 import { findLicense, licenseUrl } from "@/lib/submission";
 import { getWork, type WorkDetail as Work } from "@/lib/works";
 
@@ -47,7 +48,8 @@ export function WorkDetail({ slug }: { slug: string }) {
     const origin = window.location.origin;
     let cancelled = false;
     const url =
-      work.visibility === "private"
+      // 運営や通報で非公開になった作品も、ほかの人は slug の URL を開けない
+      !isPublicWork(work)
         ? stageUrlForSource(origin, work.source)
         : Promise.resolve(stageUrlForWork(origin, work.slug));
     void url.then((value) => {
@@ -95,7 +97,13 @@ export function WorkDetail({ slug }: { slug: string }) {
   const spec: [string, ReactNode][] = [
     [
       t.work.visibility,
-      work.hiddenBy ? t.moderation.hiddenNotice : work.visibility === "private" ? t.common.private : t.work.public,
+      work.hiddenBy === "reports"
+        ? t.moderation.admin.hiddenByReports
+        : work.hiddenBy
+          ? t.moderation.hiddenNotice
+          : work.visibility === "private"
+            ? t.common.private
+            : t.work.public,
     ],
     ["Size", `${work.bytes} B`],
     [

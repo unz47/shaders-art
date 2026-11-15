@@ -153,16 +153,18 @@ export async function hideWork(slug: string): Promise<boolean> {
 }
 
 /**
- * 運営が確認して元に戻す。それまでの通報は片付け(行を消して数を 0 に)、
- * 同じ人がまた通報できるようにする。作品が無ければ false
+ * 運営が確認して元に戻す(非公開になっていなければ、通報を片付けるだけ)。それまでの通報の行を消し、
+ * 消した数だけ reportCount を減らして、同じ人がまた通報できるようにする。作品が無ければ false。
+ * 先に行を消してから消した数だけ減らすので、そのあいだに届いた通報は行も数も残る
  */
 export async function restoreWork(slug: string): Promise<boolean> {
-  const ok = await updateWork(slug, {
-    UpdateExpression: "REMOVE hiddenBy, hiddenAt SET reportCount = :zero",
-    ExpressionAttributeValues: { ":zero": 0 },
+  if (!(await getWorkRow(slug))) return false;
+  const reports = (await scanAllItems()).filter((item) => isReportRow(item) && item.workSlug === slug);
+  await deleteRows(reports);
+  return updateWork(slug, {
+    UpdateExpression: "REMOVE hiddenBy, hiddenAt ADD reportCount :minus",
+    ExpressionAttributeValues: { ":minus": -reports.length },
   });
-  if (ok) await deleteRows((await scanAllItems()).filter((item) => isReportRow(item) && item.workSlug === slug));
-  return ok;
 }
 
 /** 作者が公開・非公開を切り替える。作品が無いか本人の作品でなければ false */

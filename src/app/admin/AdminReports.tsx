@@ -82,11 +82,11 @@ export function AdminReports() {
                   {work.hiddenBy && <Badge>{work.hiddenBy === "reports" ? a.hiddenByReports : a.hiddenByOperator}</Badge>}
                   {work.visibility === "private" && <Badge>{a.authorPrivate}</Badge>}
                   <span className="flex-1" />
-                  {work.hiddenBy ? (
-                    <Button variant="ghost" size="sm" disabled={busy === work.slug} onClick={() => void act(work.slug, "restore")}>
-                      {a.restore}
-                    </Button>
-                  ) : (
+                  {/* 戻す(restore)は通報も片付けるので、まだ非公開になっていない作品の「問題なし」にも使う */}
+                  <Button variant="ghost" size="sm" disabled={busy === work.slug} onClick={() => void act(work.slug, "restore")}>
+                    {work.hiddenBy ? a.restore : a.dismiss}
+                  </Button>
+                  {!work.hiddenBy && (
                     <Button variant="danger" size="sm" disabled={busy === work.slug} onClick={() => void act(work.slug, "hide")}>
                       {a.hide}
                     </Button>

@@ -297,6 +297,7 @@ export const en: Dictionary = {
       authorPrivate: "Private (by author)",
       hide: "Hide",
       restore: "No problem (restore)",
+      dismiss: "No problem (clear reports)",
       restored: "Restored",
       hidden: "Hidden",
       noNote: "(no details)",

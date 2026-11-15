@@ -300,6 +300,7 @@ export const ja = {
       authorPrivate: "作者が非公開",
       hide: "非公開にする",
       restore: "問題なし(戻す)",
+      dismiss: "問題なし(通報を片付ける)",
       restored: "元に戻しました",
       hidden: "非公開にしました",
       noNote: "(説明なし)",
