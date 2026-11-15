@@ -25,7 +25,7 @@ export function Footer() {
             Privacy
           </Link>
           <LanguageSwitch />
-          <span className="text-xs tracking-wide text-text-muted">© 2026 · one WebGL context · no backend</span>
+          <span className="text-xs tracking-wide text-text-muted">© 2026 shaders.art</span>
         </div>
       </div>
     </footer>
