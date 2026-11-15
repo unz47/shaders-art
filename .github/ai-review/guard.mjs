@@ -36,9 +36,10 @@ function realPath(path) {
 
 const within = (path, roots) => roots.some((root) => path === root || path.startsWith(root + sep));
 
-// Glob / Grep のパターンで外を探しに行けないようにする。
+// Glob / Grep のパターンで外を探しに行けないようにする。{..,src}/* のようなブレース展開もあるので、
+// 区切りごとに見るのではなく「..」という並びがあれば一律に拒否する。
 const escapesPattern = (pattern) =>
-  typeof pattern === "string" && (isAbsolute(pattern) || pattern.startsWith("~") || pattern.split(/[\\/]/).includes(".."));
+  typeof pattern === "string" && (isAbsolute(pattern) || pattern.startsWith("~") || pattern.includes(".."));
 
 /**
  * @param {{ cwd: string, readRoots: string[], writeRoots: string[] }} options

@@ -43,9 +43,11 @@ check() {
   [ "$(jq -r .head.repo.full_name "$dir/pr.json")" = "$REPO" ] || skip 'fork からの PR'
   [ "$(jq -r .head.sha "$dir/pr.json")" = "$HEAD_SHA" ] || skip 'レビューのあとに push されている'
 
-  gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-    --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- ai-review ")))] | last | .body // ""' \
-    >"$dir/review.md"
+  # --paginate の --jq はページごとに評価されるので、ID を集めてから最後の 1 件を取り直す。
+  review_id=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+    --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- ai-review "))) | .id' | tail -n 1)
+  [ -n "$review_id" ] || skip 'レビューのコメントが無い'
+  gh api "repos/$REPO/issues/comments/$review_id" --jq .body >"$dir/review.md"
   head -n 1 "$dir/review.md" | grep -q ' state=changes -->$' || skip '最新のレビューが要修正ではない'
 
   attempts=$(gh api "repos/$REPO/pulls/$PR_NUMBER/commits" --paginate --jq '.[].commit.message' |
