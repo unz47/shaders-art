@@ -59,17 +59,23 @@ export function PrivacyEn() {
         <P>
           Public works can be viewed by anyone, including people who are not signed in. The author name is shown with
           them. The author name is self-declared for each post, and your email address is never shown on a work. On the
-          Service, a private work can be viewed only by the person who posted it.
+          Service, a private work (one you made private, or one made private after reports or by the operator) can be
+          viewed only by the person who posted it and the operator.
         </P>
         <P>
           The account ID stored with a work is not made public, so other people cannot link together works you posted
           under different author names.
         </P>
 
-        <H3>2.3 Favorites</H3>
+        <H3>2.3 Favorites and reports</H3>
         <P>
           Which account favorited which work, and when. The number of favorites on each work is public, but who
           favorited it is not.
+        </P>
+        <P>
+          When you report a work, we keep which account reported which work, when, for which reason, and any details
+          you added. The operator uses this to review the work. That you reported it, and the number of reports, are
+          not shown to other users, including the author. The operator’s screen does not show who reported it either.
         </P>
 
         <H3 id="ai">2.4 Make with AI</H3>
@@ -236,7 +242,8 @@ export function PrivacyEn() {
       <Section title="6. How long we keep it">
         <List>
           <li>Accounts … until you ask for deletion</li>
-          <li>Works … until you ask for deletion or the operator deletes them</li>
+          <li>Works … until the author or the operator deletes them. Deleting a work also deletes its favorites and reports immediately.</li>
+          <li>Reports … until the operator reviews the work and restores it, or the work is deleted</li>
           <li>Favorites … until you remove them. They are deleted immediately when removed.</li>
           <li>Make with AI usage counts … about 8 days for daily records, about 13 months for monthly records</li>
           <li>Server records (analytics, records of each Make with AI request, errors) … 13 months</li>
@@ -268,6 +275,7 @@ export function PrivacyEn() {
         <H3>8.1 What you can do on the Service</H3>
         <List>
           <li>Remove favorites</li>
+          <li>Make your work private, make it public again, or delete it (from “Manage” on the work’s page)</li>
           <li>Change your password from “Forgot your password?” on the sign-in page</li>
           <li>Sign out</li>
           <li>Delete cookies and browser storage in your browser settings</li>
@@ -276,8 +284,8 @@ export function PrivacyEn() {
 
         <H3>8.2 Requests to the operator</H3>
         <P>
-          Editing a work, making it private, or deleting it, deleting your account, and changing your email address
-          cannot yet be done on the Service. Please send a request to [contact].
+          Editing a posted work, deleting your account, and changing your email address cannot yet be done on the
+          Service. Please send a request to [contact].
         </P>
         <P>
           You can also ask the operator, regarding your information that the operator holds, to notify you of the
