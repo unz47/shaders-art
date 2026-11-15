@@ -68,7 +68,8 @@ jobs:
         run: |
           mkdir -p review-input
           git -C pr-head diff "$BASE_SHA...HEAD" > review-input/pr.diff
-          git -C pr-head diff --name-only "$BASE_SHA...HEAD" > review-input/changed.txt
+          # --no-renames: 移動したファイルは移動元と移動先の両方を出す(移動先だけだと人間行きの判定をすり抜ける)。
+          git -C pr-head diff --name-only --no-renames "$BASE_SHA...HEAD" > review-input/changed.txt
           printf '# %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > review-input/pr.md
 
           grep -Ev '^(#|$)' .github/ai-review/human-required.txt > review-input/patterns.txt

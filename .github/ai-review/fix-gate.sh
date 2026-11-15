@@ -82,7 +82,8 @@ apply() {
   fi
 
   git -C pr-head add -A
-  git -C pr-head diff --cached --name-only >"$dir/changed.txt"
+  # --no-renames: 移動したファイルは移動元と移動先の両方を出す(移動先だけだと人間行きの判定をすり抜ける)。
+  git -C pr-head diff --cached --name-only --no-renames >"$dir/changed.txt"
 
   grep -Ev '^(#|$)' .github/ai-review/human-required.txt >"$dir/patterns.txt"
   grep -E -f "$dir/patterns.txt" "$dir/changed.txt" >"$dir/forbidden.txt" || true
@@ -144,8 +145,18 @@ apply() {
       -c user.name='Claude (AI fix)' -c user.email='noreply@anthropic.com' \
       commit -q -F "$PWD/$dir/message.txt"
     # GITHUB_TOKEN で push すると CI と ai-review が起動しないので、専用のトークンで push する。
-    git -C pr-head -c core.hooksPath=/dev/null \
-      push -q "https://x-access-token:${AI_FIX_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"
+    if ! git -C pr-head -c core.hooksPath=/dev/null \
+      push -q "https://x-access-token:${AI_FIX_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"; then
+      {
+        echo "$marker"
+        echo "## 自動修正: push できませんでした($ATTEMPT 回目)"
+        echo
+        echo '直しはしましたが、push に失敗しました。直している間にブランチへ別の push があった可能性があります。新しいコミットには改めてレビューが走ります。'
+      } >"$dir/comment.md"
+      post "$dir/comment.md"
+      echo '::error::push に失敗しました。'
+      exit 1
+    fi
     post "$dir/comment.md"
     echo "push しました: $(git -C pr-head rev-parse --short HEAD)"
     return
