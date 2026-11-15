@@ -145,7 +145,9 @@ decide() {
   post
 
   # 要修正で、人間に回すパスを触っていなければ、自動修正(ai-fix)に回す。
-  if [ "$state" = changes ] && [ ! -s "$human_file" ]; then
+  # 判定を引き継いだときは回さない。同じ指摘への修正はもう試しているので、
+  # rebase のたびに修正役が走り直してクレジットを使うだけになる。
+  if [ "$state" = changes ] && [ ! -s "$human_file" ] && [ "${REUSE:-}" != true ]; then
     echo 'fix=true' >>"${GITHUB_OUTPUT:-/dev/null}"
   fi
 

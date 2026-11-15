@@ -31,7 +31,17 @@ post() {
   fi
 }
 
-default_branch() { gh api "repos/$REPO" --jq .default_branch; }
+# check で取った PR の情報から既定ブランチを読む。分からなければ失敗する(呼び出し側は
+# `db=$(default_branch)` のように代入で受けること。そうすれば set -e で止まる)。
+default_branch() {
+  local branch
+  branch=$(jq -r '.base.repo.default_branch // empty' "$dir/pr.json" 2>/dev/null || true)
+  if [ -z "$branch" ]; then
+    echo '::error::既定ブランチが分かりません。' >&2
+    return 1
+  fi
+  echo "$branch"
+}
 
 skip() {
   echo "自動修正しません: $1"
@@ -46,7 +56,8 @@ check() {
   [ "$(jq -r .head.sha "$dir/pr.json")" = "$HEAD_SHA" ] || skip 'レビューのあとに push されている'
   # main を head にした PR を直すと、修正がレビューを通らずに main へ直接 push されてしまう。
   # push 用のトークンは管理者のものなので、ブランチ保護でも止まらない。
-  [ "$(jq -r .head.ref "$dir/pr.json")" != "$(default_branch)" ] || skip 'head が既定ブランチ'
+  db=$(default_branch)
+  [ "$(jq -r .head.ref "$dir/pr.json")" != "$db" ] || skip 'head が既定ブランチ'
 
   # --paginate の --jq はページごとに評価されるので、ID を集めてから最後の 1 件を取り直す。
   review_id=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
@@ -129,7 +140,8 @@ apply() {
 
   if [ -n "$structured" ] && [ -s "$dir/changed.txt" ] && [ ! -s "$dir/forbidden.txt" ]; then
     # check でも止めているが、既定ブランチへの push だけは何があっても許さない。
-    if [ -z "$BRANCH" ] || [ "$BRANCH" = "$(default_branch)" ]; then
+    db=$(default_branch)
+    if [ -z "$BRANCH" ] || [ "$BRANCH" = "$db" ]; then
       echo "::error::push 先が既定ブランチ(または空)なので push しません: '$BRANCH'"
       exit 1
     fi

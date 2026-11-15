@@ -72,6 +72,16 @@ jobs:
           path: pr-head
           persist-credentials: false
 
+      # ai-review はシンボリックリンクを含む PR を人間に回すので、ここに来ることは無いはず。念のため止める。
+      - name: シンボリックリンクがあれば止める
+        if: steps.check.outputs.run == 'true'
+        run: |
+          links=$(find pr-head -path pr-head/.git -prune -o -type l -print)
+          if [ -n "$links" ]; then
+            echo "::error::PR にシンボリックリンクがあるので自動修正しません: $links"
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         if: steps.check.outputs.run == 'true'
         with:
