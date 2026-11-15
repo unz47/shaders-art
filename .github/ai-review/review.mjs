@@ -59,7 +59,13 @@ try {
       if (message.subtype === "success" && !message.is_error && message.structured_output) {
         out.structured = message.structured_output;
       } else {
-        out.error = message.subtype;
+        // API のエラー(キーが無効、クレジット不足など)は subtype が success のまま
+        // is_error だけが立ち、理由は result の文章に入る。それも残さないと原因が分からない。
+        out.error = [message.is_error ? "api_error" : message.subtype, message.result, ...(message.errors ?? [])]
+          .filter(Boolean)
+          .join(": ")
+          .replace(/\s+/g, " ")
+          .slice(0, 300);
       }
     }
   }
