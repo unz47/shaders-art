@@ -23,6 +23,8 @@ export interface NextjsSiteProps {
   claudeWorkspaceId?: string;
   /** AI を上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する(src/lib/server/aiUsage) */
   aiUnlimitedEmails?: string;
+  /** 運営のメールアドレス。カンマ区切り。通報の一覧・作品の非公開と削除ができる(src/lib/moderation) */
+  adminEmails?: string;
 }
 
 // AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
@@ -44,7 +46,7 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails, adminEmails } = props;
 
     // SSR Lambda のログ(アクセス解析の "pv" と、AI の原価の "ai-edit" を含む)は 13 か月残す(前年の同じ月と比べられるように)。
     // 指定しないと Lambda が自動で作るロググループは無期限になる。変えたら利用規約の「利用状況の記録」も直すこと
@@ -80,6 +82,8 @@ export class NextjsSite extends Construct {
         // AI の上限は既定(1 人あたり月 40 クレジット・1 日 20 回、無料の人全体で月 ¥3,000)のまま。
         // 変えるなら AI_MONTHLY_CREDITS / AI_DAILY_REQUESTS / AI_FREE_MONTHLY_BUDGET_YEN
         ...(aiUnlimitedEmails ? { AI_UNLIMITED_EMAILS: aiUnlimitedEmails } : {}),
+        // 通報がこの人数に達したら自動で非公開にする既定は 3。変えるなら REPORT_AUTO_HIDE_THRESHOLD
+        ...(adminEmails ? { ADMIN_EMAILS: adminEmails } : {}),
       },
       overrides: {
         nextjsServer: {
@@ -109,10 +113,11 @@ export class NextjsSite extends Construct {
     // SSR Lambda(Route Handler)から作品を読む + 投稿(PutItem)とお気に入りを書ける。
     // お気に入りは、同じ表のお気に入りの行の追加・削除(PutItem・DeleteItem)と、作品の行の
     // favoriteCount の増減(UpdateItem)を 1 つのトランザクションで行う(src/lib/server/favorites.ts)。
-    // 作品の更新・削除の API はまだ無い。
+    // 通報・公開の切り替え・削除も同じ(src/lib/server/moderation.ts)。作品を消すときは、その作品への
+    // お気に入りと通報の行もまとめて消す(BatchWriteItem)。
     const fn = this.nextjs.serverFunction.lambdaFunction;
     table.grantReadData(fn);
-    table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem");
+    table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:BatchWriteItem");
 
     // AI と作る: anthropic.* の Claude は Messages API(bedrock-mantle)、jp.anthropic.* の Claude は InvokeModel、
     // それ以外は Converse API(どちらも bedrock-runtime)で呼ぶ。

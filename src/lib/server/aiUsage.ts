@@ -79,7 +79,9 @@ export async function getAiUsage(session: Session, limits: AiLimits, now = new D
     readCounter(usageKey(session.sub, periods.day), "requests"),
     readCounter(usageKey(FREE_POOL, periods.month), "costMicroUsd"),
   ]);
-  const unlimited = session.email !== null && limits.unlimitedEmails.includes(session.email.toLowerCase());
+  // 未確認のメールアドレスは信じない(lib/moderation の isAdmin と同じ理由)
+  const unlimited =
+    session.email !== null && session.emailVerified && limits.unlimitedEmails.includes(session.email.toLowerCase());
   return {
     credits: { used: credits, limit: limits.monthlyCredits },
     requestsToday: { used: requests, limit: limits.dailyRequests },

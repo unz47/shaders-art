@@ -26,7 +26,10 @@ export class ShadersArtStack extends Stack {
     const claudeWorkspaceId = parseWorkspaceId(this.node.tryGetContext("claudeWorkspaceId"));
     // AI を上限なしで使える人(運営)のメールアドレス(カンマ区切り)。公開リポジトリなので cdk.json には書かず、
     // デプロイのときに -c aiUnlimitedEmails=… で渡す
-    const aiUnlimitedEmails = parseEmails(this.node.tryGetContext("aiUnlimitedEmails"));
+    const aiUnlimitedEmails = parseEmails(this.node.tryGetContext("aiUnlimitedEmails"), "aiUnlimitedEmails");
+    // 運営(通報の一覧・作品の非公開と削除ができる人)のメールアドレス(カンマ区切り)。aiUnlimitedEmails と同じく
+    // デプロイのときに -c adminEmails=… で渡す。確認済みのアドレスだけが運営になる(src/lib/moderation の isAdmin)
+    const adminEmails = parseEmails(this.node.tryGetContext("adminEmails"), "adminEmails");
 
     const { table } = new WorksTable(this, "WorksTable");
     const auth = new Auth(this, "Auth", { siteUrl });
@@ -37,6 +40,7 @@ export class ShadersArtStack extends Stack {
       siteUrl,
       claudeWorkspaceId,
       aiUnlimitedEmails,
+      adminEmails,
     });
 
     new CfnOutput(this, "SiteUrl", { value: nextjs.url });
@@ -55,10 +59,10 @@ function parseSiteUrl(value: unknown): string | undefined {
   return value;
 }
 
-function parseEmails(value: unknown): string | undefined {
+function parseEmails(value: unknown, name: string): string | undefined {
   if (value === undefined || value === "") return undefined;
   if (typeof value !== "string" || !value.split(",").every((email) => /^[^@\s,]+@[^@\s,]+$/.test(email.trim()))) {
-    throw new Error(`context "aiUnlimitedEmails" はカンマ区切りのメールアドレスで指定してください: ${String(value)}`);
+    throw new Error(`context "${name}" はカンマ区切りのメールアドレスで指定してください: ${String(value)}`);
   }
   return value;
 }
