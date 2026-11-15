@@ -36,10 +36,12 @@ function realPath(path) {
 
 const within = (path, roots) => roots.some((root) => path === root || path.startsWith(root + sep));
 
-// Glob / Grep のパターンで外を探しに行けないようにする。{..,src}/* のようなブレース展開もあるので、
-// 区切りごとに見るのではなく「..」という並びがあれば一律に拒否する。
+// Glob / Grep のパターンで外を探しに行けないようにする。{..,src}/* や {/etc/*,x} のような
+// ブレース展開もあるので、「..」の並びがあれば一律に拒否し、ブレースとカンマで区切った各部分も見る。
 const escapesPattern = (pattern) =>
-  typeof pattern === "string" && (isAbsolute(pattern) || pattern.startsWith("~") || pattern.includes(".."));
+  typeof pattern === "string" &&
+  (pattern.includes("..") ||
+    [pattern, ...pattern.split(/[{},]/)].some((part) => isAbsolute(part) || part.startsWith("~")));
 
 /**
  * @param {{ cwd: string, readRoots: string[], writeRoots: string[] }} options
