@@ -13,16 +13,18 @@ import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { WorkCard } from "@/components/WorkCard";
 import { loginHref, useSession } from "@/lib/useSession";
-import { getMyWorks, type WorkSummary } from "@/lib/works";
+import { useI18n } from "@/lib/i18n/client";
+import { ApiError, getMyWorks, type WorkSummary } from "@/lib/works";
 
 type State =
   | { status: "loading" }
   | { status: "signed-out" }
-  | { status: "error"; message: string }
+  | { status: "error"; error: unknown }
   | { status: "ready"; items: WorkSummary[] };
 
 export function MyWorks() {
   const session = useSession();
+  const { t } = useI18n();
   const [state, setState] = useState<State>({ status: "loading" });
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export function MyWorks() {
         if (!cancelled) setState(items ? { status: "ready", items } : { status: "signed-out" });
       },
       (error: unknown) => {
-        if (!cancelled) setState({ status: "error", message: error instanceof Error ? error.message : "" });
+        if (!cancelled) setState({ status: "error", error });
       },
     );
     return () => {
@@ -47,19 +49,19 @@ export function MyWorks() {
       <Header />
       <main className="flex flex-1 flex-col gap-sp-lg px-sp-xl pb-sp-xl pt-8">
         <div className="flex items-baseline gap-sp-sm">
-          <h1 className="text-lg font-medium text-text-primary">自分の作品</h1>
+          <h1 className="text-lg font-medium text-text-primary">{t.me.myWorks}</h1>
           {state.status === "ready" && state.items.length > 0 && (
             <span className="font-mono text-xs text-text-muted">
-              {state.items.length} 件{privateCount > 0 && `(うち非公開 ${privateCount})`}
+              {t.me.countWithPrivate(state.items.length, privateCount)}
             </span>
           )}
         </div>
 
         {state.status === "signed-out" && (
           <EmptyState>
-            <EmptyStateTitle>自分の作品を見るにはログインしてください</EmptyStateTitle>
+            <EmptyStateTitle>{t.me.loginToSeeWorks}</EmptyStateTitle>
             {session.status === "ready" && !session.configured && (
-              <EmptyStateDescription>このサーバーにはログインが設定されていません</EmptyStateDescription>
+              <EmptyStateDescription>{t.common.loginNotConfigured}</EmptyStateDescription>
             )}
             {session.status === "ready" && session.configured && (
               <EmptyStateActions>
@@ -74,18 +76,20 @@ export function MyWorks() {
 
         {state.status === "error" && (
           <EmptyState>
-            <EmptyStateTitle>作品を読み込めませんでした</EmptyStateTitle>
-            <EmptyStateDescription>{state.message}</EmptyStateDescription>
+            <EmptyStateTitle>{t.common.loadFailed}</EmptyStateTitle>
+            {state.error instanceof ApiError && (
+              <EmptyStateDescription>{t.common.requestFailed(state.error.status)}</EmptyStateDescription>
+            )}
           </EmptyState>
         )}
 
         {state.status === "ready" && state.items.length === 0 && (
           <EmptyState>
-            <EmptyStateTitle>まだ投稿した作品はありません</EmptyStateTitle>
-            <EmptyStateDescription>Edit で作って、プレビューの下の「Submitへ進む」から投稿できます</EmptyStateDescription>
+            <EmptyStateTitle>{t.me.noWorks}</EmptyStateTitle>
+            <EmptyStateDescription>{t.me.noWorksHint}</EmptyStateDescription>
             <EmptyStateActions>
               <Link href="/edit" className={buttonVariants({ variant: "primary", size: "sm" })}>
-                作品を作る
+                {t.me.createWork}
               </Link>
             </EmptyStateActions>
           </EmptyState>

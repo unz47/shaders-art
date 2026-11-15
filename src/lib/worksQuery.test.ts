@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Work } from "./works";
 import {
+  matchesQuery,
   parsePage,
+  parseQuery,
   parseSort,
   PICK_CANDIDATES,
   pickIndex,
@@ -48,6 +50,55 @@ describe("parseSort / parsePage / worksHref", () => {
     expect(worksHref({ sort: "new" })).toBe("/works?sort=new");
     expect(worksHref({ sort: "popular", page: 2 })).toBe("/works?sort=popular&page=2");
   });
+
+  it("検索語は前後の空白を落として q に入れる(空なら付けない)", () => {
+    expect(parseQuery("  夕焼け  ")).toBe("夕焼け");
+    expect(parseQuery(null)).toBe("");
+    expect(parseQuery("x".repeat(200))).toHaveLength(100);
+    expect(worksHref({ sort: "new", q: "夕焼け リング" })).toBe("/works?sort=new&q=%E5%A4%95%E7%84%BC%E3%81%91+%E3%83%AA%E3%83%B3%E3%82%B0");
+    expect(worksHref({ sort: "short", page: 2, q: "" })).toBe("/works?sort=short&page=2");
+  });
+});
+
+describe("matchesQuery", () => {
+  const sunset = work("sunset", {
+    title: "Sunset Rings",
+    author: "トモヤ",
+    description: "夕焼けのリングがゆっくり回る",
+    tags: ["noise", "rings"],
+  });
+
+  it("タイトル・作者名・説明・タグのどれかに入っていれば合う", () => {
+    expect(matchesQuery(sunset, "sunset")).toBe(true);
+    expect(matchesQuery(sunset, "トモヤ")).toBe(true);
+    expect(matchesQuery(sunset, "夕焼け")).toBe(true);
+    expect(matchesQuery(sunset, "noise")).toBe(true);
+    expect(matchesQuery(sunset, "plasma")).toBe(false);
+  });
+
+  it("空白で区切った言葉は全部入っているものだけ", () => {
+    expect(matchesQuery(sunset, "夕焼け noise")).toBe(true);
+    expect(matchesQuery(sunset, "夕焼け plasma")).toBe(false);
+    // 全角の空白でも区切れる
+    expect(matchesQuery(sunset, "夕焼け　rings")).toBe(true);
+  });
+
+  it("大文字・小文字、全角・半角、カタカナ・ひらがなの違いは無視する", () => {
+    expect(matchesQuery(sunset, "SUNSET")).toBe(true);
+    expect(matchesQuery(sunset, "ｓｕｎｓｅｔ")).toBe(true);
+    expect(matchesQuery(sunset, "ﾄﾓﾔ")).toBe(true);
+    expect(matchesQuery(sunset, "ともや")).toBe(true);
+    expect(matchesQuery(sunset, "リング")).toBe(true);
+  });
+
+  it("# を付けるとタグだけに当たる", () => {
+    expect(matchesQuery(sunset, "#rings")).toBe(true);
+    expect(matchesQuery(sunset, "#sunset")).toBe(false);
+  });
+
+  it("空の検索語には全部合う", () => {
+    expect(matchesQuery(sunset, "   ")).toBe(true);
+  });
 });
 
 describe("sortWorks", () => {
@@ -90,6 +141,18 @@ describe("queryWorks", () => {
 
   it("範囲外のページは空", () => {
     expect(queryWorks(all, { sort: "new", page: 9 }).items).toEqual([]);
+  });
+
+  it("検索語があれば、合う公開作品だけを数えて並べる", () => {
+    const works = [
+      work("a", { title: "Plasma", createdAt: "2026-10-01T00:00:00Z" }),
+      work("b", { title: "Plasma Waves", createdAt: "2026-10-02T00:00:00Z" }),
+      work("c", { title: "Clouds" }),
+      work("d", { title: "Plasma (draft)", visibility: "private" }),
+    ];
+    const result = queryWorks(works, { sort: "new", page: 1, q: "plasma" });
+    expect(slugs(result.items)).toEqual(["b", "a"]);
+    expect(result).toMatchObject({ total: 2, pageCount: 1 });
   });
 });
 

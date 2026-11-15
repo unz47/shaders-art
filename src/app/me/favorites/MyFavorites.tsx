@@ -11,6 +11,7 @@ import {
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { WorkCard } from "@/components/WorkCard";
+import { useI18n } from "@/lib/i18n/client";
 import { useFavorites } from "@/lib/useFavorites";
 import { loginHref, useSession } from "@/lib/useSession";
 import { worksHref } from "@/lib/worksQuery";
@@ -20,23 +21,24 @@ import { worksHref } from "@/lib/worksQuery";
 export function MyFavorites() {
   const session = useSession();
   const favorites = useFavorites();
+  const { t } = useI18n();
 
   return (
     <div className="flex min-h-dvh flex-col">
       <Header />
       <main className="flex flex-1 flex-col gap-sp-lg px-sp-xl pt-8">
         <div className="flex items-baseline gap-sp-sm">
-          <h1 className="text-lg font-medium text-text-primary">お気に入り</h1>
+          <h1 className="text-lg font-medium text-text-primary">{t.me.favorites}</h1>
           {favorites.status === "ready" && favorites.items.length > 0 && (
-            <span className="font-mono text-xs text-text-muted">{favorites.items.length} 件</span>
+            <span className="font-mono text-xs text-text-muted">{t.me.countWithPrivate(favorites.items.length, 0)}</span>
           )}
         </div>
 
         {favorites.status === "signed-out" && (
           <EmptyState>
-            <EmptyStateTitle>お気に入りを見るにはログインしてください</EmptyStateTitle>
+            <EmptyStateTitle>{t.me.loginToSeeFavorites}</EmptyStateTitle>
             {session.status === "ready" && !session.configured && (
-              <EmptyStateDescription>このサーバーにはログインが設定されていません</EmptyStateDescription>
+              <EmptyStateDescription>{t.common.loginNotConfigured}</EmptyStateDescription>
             )}
             {session.status === "ready" && session.configured && (
               <EmptyStateActions>
@@ -51,11 +53,11 @@ export function MyFavorites() {
 
         {favorites.status === "ready" && favorites.items.length === 0 && (
           <EmptyState>
-            <EmptyStateTitle>まだお気に入りはありません</EmptyStateTitle>
-            <EmptyStateDescription>作品の ♡ を押すと、ここに並びます</EmptyStateDescription>
+            <EmptyStateTitle>{t.me.noFavorites}</EmptyStateTitle>
+            <EmptyStateDescription>{t.me.noFavoritesHint}</EmptyStateDescription>
             <EmptyStateActions>
               <Link href={worksHref({ sort: "new" })} className={buttonVariants({ variant: "primary", size: "sm" })}>
-                作品を見る
+                {t.me.browseWorks}
               </Link>
             </EmptyStateActions>
           </EmptyState>

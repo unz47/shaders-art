@@ -11,7 +11,8 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
 import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
-import { findLicense } from "@/lib/submission";
+import { useI18n } from "@/lib/i18n/client";
+import { findLicense, licenseUrl } from "@/lib/submission";
 import { getWork, type Work } from "@/lib/works";
 
 // 仕様: Figma "Shader / Desktop 1440"(node 41:513)。/edit と同じ「左にコード・
@@ -24,6 +25,7 @@ type State = { status: "loading" } | { status: "missing" } | { status: "found"; 
 export function WorkDetail({ slug }: { slug: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const toast = useToast();
+  const { locale, t } = useI18n();
 
   useEffect(() => {
     let cancelled = false;
@@ -60,16 +62,16 @@ export function WorkDetail({ slug }: { slug: string }) {
       void navigator.clipboard
         .writeText(text)
         .then(() => toast.add({ title, description }))
-        .catch(() => toast.add({ title: "コピーできませんでした", priority: "high" }));
+        .catch(() => toast.add({ title: t.work.copyFailed, priority: "high" }));
     },
-    [toast],
+    [toast, t],
   );
 
   if (state.status === "loading") {
     return (
       <div className="flex min-h-dvh flex-col">
         <Header />
-        <div className="grid flex-1 place-items-center text-sm text-text-muted">読み込み中…</div>
+        <div className="grid flex-1 place-items-center text-sm text-text-muted">{t.work.loading}</div>
       </div>
     );
   }
@@ -78,7 +80,7 @@ export function WorkDetail({ slug }: { slug: string }) {
     return (
       <div className="flex min-h-dvh flex-col">
         <Header />
-        <div className="grid flex-1 place-items-center text-sm text-text-muted">この作品は見つかりませんでした。</div>
+        <div className="grid flex-1 place-items-center text-sm text-text-muted">{t.work.notFound}</div>
       </div>
     );
   }
@@ -88,8 +90,9 @@ export function WorkDetail({ slug }: { slug: string }) {
   // 投稿 API は ISO の日時、初期データは日付だけで入っているので、日付部分だけ見せる
   const published = work.createdAt.slice(0, 10);
   const license = findLicense(work.license);
+  const licenseLabel = license ? t.license[license.id].label : work.license;
   const spec: [string, ReactNode][] = [
-    ["公開設定", work.visibility === "private" ? "非公開" : "公開"],
+    [t.work.visibility, work.visibility === "private" ? t.common.private : t.work.public],
     ["Size", `${work.bytes} B`],
     [
       "License",
@@ -97,16 +100,16 @@ export function WorkDetail({ slug }: { slug: string }) {
       license ? (
         license.url.startsWith("/") ? (
           <Link href={license.url} className="underline underline-offset-2 hover:text-text-secondary">
-            {license.label}
+            {licenseLabel}
           </Link>
         ) : (
           <a
-            href={license.url}
+            href={licenseUrl(license, locale)}
             target="_blank"
             rel="noopener"
             className="underline underline-offset-2 hover:text-text-secondary"
           >
-            {license.label}
+            {licenseLabel}
           </a>
         )
       ) : (
@@ -131,31 +134,31 @@ export function WorkDetail({ slug }: { slug: string }) {
             </div>
             <FavoriteButton work={work} variant="inline" />
             <Menu>
-              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!stageUrl} />}>配信・埋め込み</MenuTrigger>
+              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!stageUrl} />}>{t.work.streamEmbed}</MenuTrigger>
               <MenuContent align="end">
                 <MenuItem
                   onClick={() =>
                     stageUrl &&
                     copyText(
                       stageUrl,
-                      "配信背景用の URL をコピーしました",
-                      "OBS の「ソース」→「ブラウザ」の URL に貼り付け、幅 1920・高さ 1080 にしてください。壁紙アプリにも使えます。",
+                      t.work.stageUrlCopied,
+                      t.work.stageUrlHint,
                     )
                   }
                 >
-                  配信背景用の URL をコピー
+                  {t.work.copyStageUrl}
                 </MenuItem>
                 <MenuItem
                   onClick={() =>
                     stageUrl &&
                     copyText(
                       embedSnippet(stageUrl, work.title),
-                      "埋め込みコードをコピーしました",
-                      "ブログやサイトの HTML に貼り付けてください。",
+                      t.work.embedCopied,
+                      t.work.embedHint,
                     )
                   }
                 >
-                  埋め込みコードをコピー
+                  {t.work.copyEmbed}
                 </MenuItem>
               </MenuContent>
             </Menu>
@@ -166,16 +169,16 @@ export function WorkDetail({ slug }: { slug: string }) {
               onClick={() =>
                 copyText(
                   work.source,
-                  "コピーしました",
-                  license ? `${license.label} の作品です。${license.reuse}` : "作品のコードをクリップボードに入れました。",
+                  t.work.copied,
+                  license ? t.work.copiedUnder(licenseLabel, t.license[license.id].reuse) : t.work.codeCopied,
                 )
               }
             >
-              コードをコピー
+              {t.work.copyCode}
             </Button>
             {/* /edit はまだ無いので、いまは見た目だけ */}
             <Button variant="primary" size="sm" disabled>
-              エディタで開く
+              {t.work.openInEditor}
             </Button>
           </div>
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">

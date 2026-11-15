@@ -41,16 +41,16 @@ import {
   checkLoopsBounded,
   DEFAULT_LICENSE,
   DESCRIPTION_MAX,
-  findLicense,
   FRAME_TIME_BUDGET_MS,
-  type LicenseId,
   SIZE_BUDGET_BYTES,
   TITLE_MAX,
   type WorkVisibility,
 } from "@/lib/submission";
 import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
+import type { Dictionary } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n/client";
 import { renderGif } from "@/lib/renderGif";
-import { renderStillPng } from "@/lib/renderStill";
+import { RenderError, renderStillPng } from "@/lib/renderStill";
 import { buildStandaloneHtml, downloadBlob, exportFileName, toShadertoy } from "@/lib/shaderExport";
 import { embedSnippet, stageUrlForSource } from "@/lib/stageUrl";
 import { useFullscreen } from "@/lib/useFullscreen";
@@ -70,18 +70,17 @@ const STARTER_SOURCE = ["vec4 render(vec2 uv, vec2 p) {", "  return vec4(uv, 0.5
 
 // プリセット: それぞれ違う技法を示す短い出発点。既存の収蔵作品(Plasmaなど)を
 // そのまま複製すると紛らわしいので、別に用意した簡易版。
-const PRESETS: { id: string; label: string; source: string }[] = [
-  { id: "gradient", label: "グラデーション", source: STARTER_SOURCE },
+// 名前は lib/i18n の edit.presets
+const PRESETS: { id: keyof Dictionary["edit"]["presets"]; source: string }[] = [
+  { id: "gradient", source: STARTER_SOURCE },
   {
     id: "waves",
-    label: "波",
     source: ["vec4 render(vec2 uv, vec2 p) {", "  float v = sin((p.x + time) * 6.0) * 0.5 + 0.5;", "  return vec4(vec3(v), 1.0);", "}"].join(
       "\n",
     ),
   },
   {
     id: "rings",
-    label: "リング",
     source: [
       "vec4 render(vec2 uv, vec2 p) {",
       "  float r = length(p);",
@@ -92,7 +91,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "mouse",
-    label: "マウス",
     source: [
       "// uniforms: time, resolution, attention, mouse",
       "vec4 render(vec2 uv, vec2 p) {",
@@ -104,7 +102,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "kaleidoscope",
-    label: "カレイドスコープ",
     source: [
       "vec4 render(vec2 uv, vec2 p) {",
       "  float segments = 8.0;",
@@ -119,7 +116,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "domain-warp",
-    label: "ドメインワーピング",
     source: [
       "float hash(vec2 p) {",
       "  return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);",
@@ -142,7 +138,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "sphere",
-    label: "疑似3D球体",
     source: [
       "float sdSphere(vec3 p, float r) {",
       "  return length(p) - r;",
@@ -168,7 +163,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "fractal",
-    label: "フラクタル",
     source: [
       "vec4 render(vec2 uv, vec2 p) {",
       "  vec2 c = p * 1.2 + vec2(-0.5, 0.0);",
@@ -198,19 +192,19 @@ const DEFAULT_PREVIEW_RATIO = 0.45;
 const AI_SPLIT_KEY = "shaders-art:edit-ai-split";
 // AI 欄を閉じているか。閉じたときだけ保存する
 const AI_CLOSED_KEY = "shaders-art:edit-ai-closed";
-// 書き出しメニューの PNG の大きさ。壁紙や SNS でよく使うもの
+// 書き出しメニューの PNG の大きさ。壁紙や SNS でよく使うもの(名前は lib/i18n の edit.stillSizes)
 const STILL_SIZES = [
-  { label: "1920×1080(横・フル HD)", width: 1920, height: 1080, suffix: "1920x1080" },
-  { label: "3840×2160(横・4K)", width: 3840, height: 2160, suffix: "4k" },
-  { label: "1080×1920(縦・スマホ壁紙)", width: 1080, height: 1920, suffix: "1080x1920" },
-  { label: "1080×1080(正方形・SNS)", width: 1080, height: 1080, suffix: "1080x1080" },
+  { width: 1920, height: 1080, suffix: "1920x1080" },
+  { width: 3840, height: 2160, suffix: "4k" },
+  { width: 1080, height: 1920, suffix: "1080x1920" },
+  { width: 1080, height: 1080, suffix: "1080x1080" },
 ] as const;
 
-// 書き出しメニューの GIF。長さと大きさの組み合わせ(20fps)。大きく長いほどファイルも大きくなる
+// 書き出しメニューの GIF。長さと大きさの組み合わせ(20fps)。大きく長いほどファイルも大きくなる(名前は lib/i18n の edit.gifPresets)
 const GIF_PRESETS = [
-  { label: "3 秒・480×270(軽い)", width: 480, height: 270, seconds: 3, suffix: "3s" },
-  { label: "5 秒・640×360", width: 640, height: 360, seconds: 5, suffix: "5s" },
-  { label: "5 秒・480×480(正方形・SNS)", width: 480, height: 480, seconds: 5, suffix: "5s-square" },
+  { width: 480, height: 270, seconds: 3, suffix: "3s" },
+  { width: 640, height: 360, seconds: 5, suffix: "5s" },
+  { width: 480, height: 480, seconds: 5, suffix: "5s-square" },
 ] as const;
 const GIF_FPS = 20;
 
@@ -296,20 +290,8 @@ function writeTitle(title: string | null) {
 }
 
 // 投稿ダイアログのライセンスの選択肢。ライセンスの名前ではなく、ほかの人が何をしてよいかで選んでもらう
-// (lib/submission の LICENSES のうち、新しい投稿で選べるもの)
-const LICENSE_CHOICES: { id: LicenseId; title: string; description: string }[] = [
-  {
-    id: "shaders-art-standard",
-    title: "サイトの中でだけ使ってよい",
-    description:
-      "見る・配信の背景や埋め込みに使う・サイト内でリミックスする、まで。コードをサイトの外で使うには、あなたの許可が要ります",
-  },
-  {
-    id: "CC-BY-4.0",
-    title: "名前を出せば、どこでも自由に使ってよい",
-    description: "サイトの外でも、改変や販売を含めて使えます。使う人はあなたの名前を表示します。あとから取り消せません",
-  },
-];
+// (lib/submission の LICENSES のうち、新しい投稿で選べるもの。文言は lib/i18n の edit.licenseChoices)
+const LICENSE_CHOICES = ["shaders-art-standard", "CC-BY-4.0"] as const;
 
 type SubmitForm = {
   title: string;
@@ -366,6 +348,7 @@ export default function EditPage() {
   const stageRef = useRef<HTMLDivElement>(null);
   const fullscreen = useFullscreen(stageRef);
   const toast = useToast();
+  const { t } = useI18n();
   // マウスがプレビューの上で止まっている(または外にある)間は true。全画面ボタンを隠す
   const [pointerIdle, setPointerIdle] = useState(true);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -424,8 +407,7 @@ export default function EditPage() {
       const blob = await renderStillPng(exportSource, { width: size.width, height: size.height, time: stats.elapsed });
       downloadBlob(blob, exportFileName(form.title, size.suffix, "png"));
     } catch (error) {
-      const description = error instanceof Error ? error.message : undefined;
-      toast.add({ title: "画像を書き出せませんでした", description, priority: "high" });
+      toast.add({ title: t.edit.imageFailed, description: renderErrorMessage(error, t), priority: "high" });
     }
   }
 
@@ -445,8 +427,7 @@ export default function EditPage() {
       });
       downloadBlob(blob, exportFileName(form.title, preset.suffix, "gif"));
     } catch (error) {
-      const description = error instanceof Error ? error.message : undefined;
-      toast.add({ title: "GIF を書き出せませんでした", description, priority: "high" });
+      toast.add({ title: t.edit.gifFailed, description: renderErrorMessage(error, t), priority: "high" });
     } finally {
       setGifProgress(null);
     }
@@ -461,25 +442,25 @@ export default function EditPage() {
     void navigator.clipboard
       .writeText(text)
       .then(() => toast.add({ title, description }))
-      .catch(() => toast.add({ title: "コピーできませんでした", priority: "high" }));
+      .catch(() => toast.add({ title: t.work.copyFailed, priority: "high" }));
   }
 
   function copyForShadertoy() {
-    copyText(toShadertoy(exportSource, { title: form.title }), "コピーしました", "Shadertoy の Image タブに貼り付けてください。");
+    copyText(toShadertoy(exportSource, { title: form.title }), t.work.copied, t.edit.shadertoyHint);
   }
 
   function copyStageUrl() {
     if (!stageUrl) return;
     copyText(
       stageUrl,
-      "配信背景用の URL をコピーしました",
-      "OBS の「ソース」→「ブラウザ」の URL に貼り付け、幅 1920・高さ 1080 にしてください。壁紙アプリにも使えます。",
+      t.work.stageUrlCopied,
+      t.work.stageUrlHint,
     );
   }
 
   function copyEmbed() {
     if (!stageUrl) return;
-    copyText(embedSnippet(stageUrl, form.title), "埋め込みコードをコピーしました", "ブログやサイトの HTML に貼り付けてください。");
+    copyText(embedSnippet(stageUrl, form.title), t.work.embedCopied, t.work.embedHint);
   }
 
   useEffect(
@@ -595,14 +576,14 @@ export default function EditPage() {
 
   const bytes = byteLength(checkedSource);
   const hasFragCoord = checkedSource.includes("gl_FragCoord");
-  const loopCheck = checkLoopsBounded(checkedSource);
+  const loopCheck = checkLoopsBounded(checkedSource, t.submission);
 
   const checks: PrePublishCheck[] = [
     {
       key: "compiles",
       label: "Compiles",
       ok: hasRendered ? stats.error === null : null,
-      detail: !hasRendered ? "確認中…" : (stats.error ?? "WebGL2 · GLSL ES 3.00"),
+      detail: !hasRendered ? t.edit.checking : (stats.error ?? "WebGL2 · GLSL ES 3.00"),
     },
     {
       key: "size",
@@ -614,13 +595,13 @@ export default function EditPage() {
       key: "frame-time",
       label: "Frame time",
       ok: hasRendered ? stats.frameTimeMs <= FRAME_TIME_BUDGET_MS : null,
-      detail: hasRendered ? `${stats.frameTimeMs.toFixed(1)} ms / ${FRAME_TIME_BUDGET_MS} ms budget` : "確認中…",
+      detail: hasRendered ? `${stats.frameTimeMs.toFixed(1)} ms / ${FRAME_TIME_BUDGET_MS} ms budget` : t.edit.checking,
     },
     {
       key: "no-fragcoord",
       label: "No gl_FragCoord",
       ok: !hasFragCoord,
-      detail: hasFragCoord ? "gl_FragCoord は使えません" : "render(uv, p) only",
+      detail: hasFragCoord ? t.submission.noFragCoord : "render(uv, p) only",
     },
     {
       key: "loops",
@@ -682,9 +663,10 @@ export default function EditPage() {
         goToLogin();
         return;
       }
-      setSubmitErrors(result.errors);
+      // サーバーが理由を返さなかったときは、ステータスだけでも伝える
+      setSubmitErrors(result.errors.length > 0 ? result.errors : [t.edit.submitFailed(result.status)]);
     } catch {
-      setSubmitErrors(["通信に失敗しました。もう一度お試しください"]);
+      setSubmitErrors([t.edit.networkError]);
     }
     setSubmitting(false);
   }
@@ -699,22 +681,22 @@ export default function EditPage() {
             <div className="min-w-0 flex-1">
               {/* その場で編集できるタイトル。投稿ダイアログのタイトル欄と同じ値 */}
               <input
-                aria-label="作品のタイトル"
+                aria-label={t.edit.titleLabel}
                 value={form.title}
                 onChange={(e) => updateTitle(e.target.value)}
                 placeholder="Untitled"
                 maxLength={TITLE_MAX}
                 className="-mx-1 w-full truncate rounded-control bg-transparent px-1 text-sm font-medium text-text-primary outline-none placeholder:text-text-muted hover:bg-bg-raised focus:bg-bg-raised"
               />
-              <p className="text-xs tracking-wide text-text-secondary">下書き · このブラウザに自動保存</p>
+              <p className="text-xs tracking-wide text-text-secondary">{t.edit.draftNote}</p>
             </div>
             <div className="flex items-center">
               <Button
                 variant="ghost"
                 size="sm"
                 className="px-sp-xs"
-                aria-label="元に戻す"
-                title="元に戻す(⌘Z)"
+                aria-label={t.edit.undo}
+                title={t.edit.undoHint}
                 disabled={!canUndo}
                 onClick={handleUndo}
               >
@@ -724,8 +706,8 @@ export default function EditPage() {
                 variant="ghost"
                 size="sm"
                 className="px-sp-xs"
-                aria-label="やり直す"
-                title="やり直す(⇧⌘Z)"
+                aria-label={t.edit.redo}
+                title={t.edit.redoHint}
                 disabled={!canRedo}
                 onClick={handleRedo}
               >
@@ -733,27 +715,27 @@ export default function EditPage() {
               </Button>
             </div>
             <Menu>
-              <MenuTrigger render={<Button variant="secondary" size="sm" />}>プリセット</MenuTrigger>
+              <MenuTrigger render={<Button variant="secondary" size="sm" />}>{t.edit.presetsMenu}</MenuTrigger>
               <MenuContent align="end">
                 {PRESETS.map((preset) => (
                   <MenuItem key={preset.id} onClick={() => applySource(preset.source)}>
-                    {preset.label}
+                    {t.edit.presets[preset.id]}
                   </MenuItem>
                 ))}
               </MenuContent>
             </Menu>
             <Button variant="ghost" size="sm" onClick={handleReset}>
-              リセット
+              {t.edit.reset}
             </Button>
           </div>
           {/* ファイル名と render のヒントのバーは置かない(作品は 1 ファイルだけなので)。
               AI の提案を差分で見せている間だけ、その旨を出す */}
           {diffCount && (
             <div className="flex items-center gap-1.5 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
-              AI の提案を表示中
+              {t.edit.showingProposal}
               <span className="text-status-success-solid">+{diffCount.added}</span>
               <span className="text-status-danger-solid">−{diffCount.removed}</span>
-              (未適用)
+              {t.edit.notApplied}
             </div>
           )}
           {diff ? (
@@ -765,7 +747,7 @@ export default function EditPage() {
             <SplitHandle
               containerRef={codeColumnRef}
               orientation="horizontal"
-              label="コード欄と AI 欄の境界"
+              label={t.edit.codeAiBoundary}
               ratio={aiPanelRatio}
               minStartPx={MIN_CODE_HEIGHT_PX}
               minEndPx={AI_PANEL_MIN_HEIGHT_PX}
@@ -779,8 +761,8 @@ export default function EditPage() {
               ref={fabRef}
               size="icon"
               className="absolute bottom-6 left-6 z-20 size-12 rounded-full shadow-elevation-2"
-              aria-label={proposal ? "AI 欄を開く(未適用の提案があります)" : "AI 欄を開く"}
-              title={proposal ? "AI と作る(未適用の提案があります)" : "AI と作る"}
+              aria-label={proposal ? t.edit.openAiPending : t.edit.openAi}
+              title={proposal ? t.edit.aiHintPending : t.edit.aiHint}
               onClick={() => changeAiPanelOpen(true)}
             >
               <SparkleIcon className="size-5" />
@@ -808,7 +790,7 @@ export default function EditPage() {
 
         <SplitHandle
           containerRef={columnsRef}
-          label="コード欄とプレビュー欄の境界"
+          label={t.edit.codePreviewBoundary}
           ratio={previewRatio}
           minStartPx={MIN_CODE_WIDTH_PX}
           minEndPx={MIN_PREVIEW_WIDTH_PX}
@@ -843,8 +825,8 @@ export default function EditPage() {
             {fullscreen.supported && (
               <button
                 type="button"
-                aria-label={fullscreen.active ? "全画面を終了" : "全画面"}
-                title={`${fullscreen.active ? "全画面を終了" : "全画面"}(ダブルクリックでも切り替え)`}
+                aria-label={fullscreen.active ? t.edit.exitFullscreen : t.edit.fullscreen}
+                title={t.edit.fullscreenHint(fullscreen.active ? t.edit.exitFullscreen : t.edit.fullscreen)}
                 onClick={toggleFullscreen}
                 onDoubleClick={(e) => e.stopPropagation()}
                 // 作品の上に重ねるので、テーマに関わらず半透明の黒地に白いアイコンにする
@@ -859,47 +841,47 @@ export default function EditPage() {
 
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => setPlaying((p) => !p)}>
-              {playing ? "一時停止" : "再生"}
+              {playing ? t.preview.pause : t.preview.play}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setResetToken((t) => t + 1)}>
-              先頭へ
+            <Button variant="ghost" size="sm" onClick={() => setResetToken((n) => n + 1)}>
+              {t.preview.restart}
             </Button>
             <Menu>
               <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!canExport || gifProgress !== null} />}>
-                {gifProgress === null ? "書き出し" : `GIF を作成中 ${Math.round(gifProgress * 100)}%`}
+                {gifProgress === null ? t.edit.exportMenu : t.edit.gifProgress(Math.round(gifProgress * 100))}
               </MenuTrigger>
               <MenuContent align="start">
                 <MenuGroup>
-                  <MenuGroupLabel>画像(PNG・いまのコマ)</MenuGroupLabel>
+                  <MenuGroupLabel>{t.edit.exportImage}</MenuGroupLabel>
                   {STILL_SIZES.map((size) => (
                     <MenuItem key={size.suffix} onClick={() => void exportPng(size)}>
-                      {size.label}
+                      {t.edit.stillSizes[size.suffix]}
                     </MenuItem>
                   ))}
                 </MenuGroup>
                 <MenuSeparator />
                 <MenuGroup>
-                  <MenuGroupLabel>GIF(ループ・いまのコマから)</MenuGroupLabel>
+                  <MenuGroupLabel>{t.edit.exportGif}</MenuGroupLabel>
                   {GIF_PRESETS.map((preset) => (
                     <MenuItem key={preset.suffix} onClick={() => void exportGif(preset)}>
-                      {preset.label}
+                      {t.edit.gifPresets[preset.suffix]}
                     </MenuItem>
                   ))}
                 </MenuGroup>
                 <MenuSeparator />
                 <MenuGroup>
-                  <MenuGroupLabel>コード</MenuGroupLabel>
-                  <MenuItem onClick={exportHtml}>単体で動く HTML ファイル</MenuItem>
-                  <MenuItem onClick={copyForShadertoy}>Shadertoy 用にコピー</MenuItem>
+                  <MenuGroupLabel>{t.edit.exportCode}</MenuGroupLabel>
+                  <MenuItem onClick={exportHtml}>{t.edit.exportHtml}</MenuItem>
+                  <MenuItem onClick={copyForShadertoy}>{t.edit.copyShadertoy}</MenuItem>
                 </MenuGroup>
                 <MenuSeparator />
                 <MenuGroup>
-                  <MenuGroupLabel>配信背景・埋め込み(投稿しなくても使える)</MenuGroupLabel>
+                  <MenuGroupLabel>{t.edit.exportStage}</MenuGroupLabel>
                   <MenuItem disabled={!stageUrl} onClick={copyStageUrl}>
-                    配信背景用の URL をコピー
+                    {t.work.copyStageUrl}
                   </MenuItem>
                   <MenuItem disabled={!stageUrl} onClick={copyEmbed}>
-                    埋め込みコードをコピー
+                    {t.work.copyEmbed}
                   </MenuItem>
                 </MenuGroup>
               </MenuContent>
@@ -943,12 +925,12 @@ export default function EditPage() {
 
           {/* 投稿はチェックのすぐ下に置く(画面下の全幅バーはやめ、左はコードと AI、右は確認と投稿に分ける) */}
           <div className="flex items-center justify-end gap-4">
-            {proposal && <span className="flex-1 text-xs text-text-muted">AI の提案を適用するか却下すると投稿できます</span>}
+            {proposal && <span className="flex-1 text-xs text-text-muted">{t.edit.resolveProposal}</span>}
             {!proposal && authReady && !loggedIn && (
-              <span className="flex-1 text-xs text-text-muted">投稿にはログインが必要です(下書きは残ります)</span>
+              <span className="flex-1 text-xs text-text-muted">{t.edit.loginToPost}</span>
             )}
             <Button variant="primary" size="md" disabled={!canProceed} onClick={handleProceed}>
-              {loggedIn || !authReady ? "Submitへ進む" : "ログインして投稿"}
+              {loggedIn || !authReady ? t.edit.proceed : t.edit.loginAndPost}
             </Button>
           </div>
         </div>
@@ -961,14 +943,12 @@ export default function EditPage() {
         }}
       >
         <DialogContent className="w-full max-w-md">
-          <DialogTitle>作品を登録する</DialogTitle>
+          <DialogTitle>{t.edit.dialog.title}</DialogTitle>
           <DialogDescription>
-            {form.visibility === "public"
-              ? "作品ページは誰でも閲覧でき、Gallery に表示されます。"
-              : "作品ページは投稿者本人だけが閲覧できます。Gallery にも表示されません。"}
+            {form.visibility === "public" ? t.edit.dialog.publicNote : t.edit.dialog.privateNote}
           </DialogDescription>
           <form onSubmit={handlePublish} className="mt-4 flex flex-col gap-3">
-            <Field label="タイトル" htmlFor="submit-title">
+            <Field label={t.edit.dialog.titleField} htmlFor="submit-title">
               <Input
                 id="submit-title"
                 required
@@ -977,7 +957,7 @@ export default function EditPage() {
                 onChange={(e) => updateTitle(e.target.value)}
               />
             </Field>
-            <Field label="名前(表示用・任意)" htmlFor="submit-author">
+            <Field label={t.edit.dialog.authorField} htmlFor="submit-author">
               <Input
                 id="submit-author"
                 placeholder="Anonymous"
@@ -988,7 +968,7 @@ export default function EditPage() {
             </Field>
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-1 flex w-full items-baseline text-sm font-medium text-text-primary">
-                <span className="flex-1">ほかの人の使い方</span>
+                <span className="flex-1">{t.edit.dialog.reuseLegend}</span>
                 {/* ダイアログを閉じずに読めるよう別のタブで開く(下書きは残る) */}
                 <a
                   href="/terms#license"
@@ -996,32 +976,32 @@ export default function EditPage() {
                   rel="noopener"
                   className="text-xs font-normal text-text-secondary underline underline-offset-2 hover:text-text-primary"
                 >
-                  ライセンスについて
+                  {t.edit.dialog.aboutLicenses}
                 </a>
               </legend>
               {LICENSE_CHOICES.map((choice) => (
                 <label
-                  key={choice.id}
+                  key={choice}
                   className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3"
                 >
                   <input
                     className="mt-1 accent-accent-default"
                     type="radio"
                     name="license"
-                    value={choice.id}
-                    checked={form.license === choice.id}
-                    onChange={() => updateForm("license", choice.id)}
+                    value={choice}
+                    checked={form.license === choice}
+                    onChange={() => updateForm("license", choice)}
                   />
                   <span className="flex flex-col gap-0.5">
-                    <span className="text-sm text-text-primary">{choice.title}</span>
-                    <span className="text-xs text-text-muted">{choice.description}</span>
-                    <span className="font-mono text-[11px] text-text-muted">{findLicense(choice.id)?.label}</span>
+                    <span className="text-sm text-text-primary">{t.edit.licenseChoices[choice].title}</span>
+                    <span className="text-xs text-text-muted">{t.edit.licenseChoices[choice].description}</span>
+                    <span className="font-mono text-[11px] text-text-muted">{t.license[choice].label}</span>
                   </span>
                 </label>
               ))}
             </fieldset>
             <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-sm font-medium text-text-primary">公開範囲</legend>
+              <legend className="mb-1 text-sm font-medium text-text-primary">{t.edit.dialog.visibilityLegend}</legend>
               <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
                 <input
                   className="mt-1 accent-accent-default"
@@ -1032,8 +1012,8 @@ export default function EditPage() {
                   onChange={() => updateForm("visibility", "public")}
                 />
                 <span className="flex flex-col gap-0.5">
-                  <span className="text-sm text-text-primary">公開</span>
-                  <span className="text-xs text-text-muted">作品ページが Gallery に表示され、誰でも閲覧できます</span>
+                  <span className="text-sm text-text-primary">{t.edit.dialog.public}</span>
+                  <span className="text-xs text-text-muted">{t.edit.dialog.publicHint}</span>
                 </span>
               </label>
               <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
@@ -1046,12 +1026,12 @@ export default function EditPage() {
                   onChange={() => updateForm("visibility", "private")}
                 />
                 <span className="flex flex-col gap-0.5">
-                  <span className="text-sm text-text-primary">非公開</span>
-                  <span className="text-xs text-text-muted">投稿者本人だけが閲覧できます</span>
+                  <span className="text-sm text-text-primary">{t.edit.dialog.private}</span>
+                  <span className="text-xs text-text-muted">{t.edit.dialog.privateHint}</span>
                 </span>
               </label>
             </fieldset>
-            <Field label="タグ(カンマ区切り・任意)" htmlFor="submit-tags">
+            <Field label={t.edit.dialog.tagsField} htmlFor="submit-tags">
               <Input
                 id="submit-tags"
                 placeholder="noise, warp"
@@ -1059,7 +1039,7 @@ export default function EditPage() {
                 onChange={(e) => updateForm("tags", e.target.value)}
               />
             </Field>
-            <Field label="説明(任意)" htmlFor="submit-description">
+            <Field label={t.edit.dialog.descriptionField} htmlFor="submit-description">
               <Textarea
                 id="submit-description"
                 rows={3}
@@ -1077,10 +1057,10 @@ export default function EditPage() {
             )}
             <div className="mt-2 flex justify-end gap-2">
               <DialogClose render={<Button type="button" variant="ghost" size="sm" disabled={submitting} />}>
-                キャンセル
+                {t.edit.dialog.cancel}
               </DialogClose>
               <Button type="submit" variant="primary" size="sm" disabled={submitting}>
-                {submitting ? "登録中…" : form.visibility === "public" ? "公開する" : "非公開で登録"}
+                {submitting ? t.edit.dialog.submitting : form.visibility === "public" ? t.edit.dialog.publish : t.edit.dialog.savePrivate}
               </Button>
             </div>
           </form>
@@ -1088,6 +1068,19 @@ export default function EditPage() {
       </Dialog>
     </div>
   );
+}
+
+/** 書き出しの失敗の理由(lib/renderStill の RenderError)を、画面の言語の文にする。理由が分からなければ出さない */
+function renderErrorMessage(error: unknown, t: Dictionary): string | undefined {
+  if (!(error instanceof RenderError)) return undefined;
+  switch (error.reason) {
+    case "too-large":
+      return t.edit.renderError.tooLarge(error.detail);
+    case "compile":
+      return t.edit.renderError.compile(error.detail);
+    case "no-image":
+      return t.edit.renderError.noImage;
+  }
 }
 
 // 全画面に入る(四隅が外向き)/ 抜ける(四隅が内向き)。色は文字色に従う

@@ -1,6 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type PointerEvent, type RefObject, useRef } from "react";
+import { useI18n } from "@/lib/i18n/client";
 
 // /edit の欄どうしの境界。ドラッグ(またはフォーカスして矢印キー)で、後ろ側の欄の大きさの割合を変える。
 // ダブルクリックで既定の大きさに戻す。
@@ -35,6 +36,7 @@ export function SplitHandle({
   onReset: () => void;
 }) {
   const dragging = useRef(false);
+  const { t } = useI18n();
   const vertical = orientation === "vertical";
 
   function clamp(next: number): number {
@@ -98,7 +100,7 @@ export function SplitHandle({
       aria-valuemin={0}
       aria-valuemax={100}
       tabIndex={0}
-      title={`ドラッグで${vertical ? "幅" : "高さ"}を変える(ダブルクリックで元に戻す)`}
+      title={vertical ? t.splitHandle.widthHint : t.splitHandle.heightHint}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SparkleIcon } from "@/components/SparkleIcon";
 import { AI_PROMPT_MAX, getAvailableAiModels, requestAiEdit, type AiTurnSummary, type AiUsage } from "@/lib/aiEdit";
 import { AI_MODELS, DEFAULT_AI_MODEL_ID, findAiModel, priceTier } from "@/lib/aiModels";
+import { useI18n } from "@/lib/i18n/client";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { byteLength, SIZE_BUDGET_BYTES } from "@/lib/submission";
 
@@ -126,6 +127,7 @@ export function AiPanel({
   const models = AI_MODELS.filter((m) => (available && available.length > 0 ? available.includes(m.id) : m.via !== "claude"));
   // 覚えていたモデルが今は使えなければ、既定のモデルにする
   const model = models.some((m) => m.id === storedModel) ? storedModel : DEFAULT_AI_MODEL_ID;
+  const { locale, t } = useI18n();
   const nextId = useRef(1);
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -171,7 +173,7 @@ export function AiPanel({
     try {
       const result = await requestAiEdit(
         { source: base, prompt, history, model },
-        { signal: controller.signal, onText: (text) => updateTurn(id, (t) => ({ reply: t.reply + text })) },
+        { signal: controller.signal, t: t.ai, onText: (text) => updateTurn(id, (turn) => ({ reply: turn.reply + text })) },
       );
       if (!result.ok) {
         updateTurn(id, () => ({ status: "error", reply: result.message }));
@@ -190,7 +192,7 @@ export function AiPanel({
       }));
       if (source !== null) onPropose(id, source);
     } catch {
-      const reply = controller.signal.aborted ? "停止しました" : "通信に失敗しました。もう一度お試しください";
+      const reply = controller.signal.aborted ? t.ai.stopped : t.ai.networkError;
       updateTurn(id, () => ({ status: "error", reply }));
     } finally {
       abortRef.current = null;
@@ -212,7 +214,7 @@ export function AiPanel({
   return (
     // 上の線は親の境界(SplitHandle)が引く
     <section
-      aria-label="AI と作る"
+      aria-label={t.ai.title}
       className={`${open ? "flex" : "hidden"} shrink-0 flex-col gap-3 bg-bg-surface px-6 pb-4 pt-3 ${heightRatio === null ? "max-h-[45%]" : ""}`}
       style={
         heightRatio === null ? undefined : { height: `${heightRatio * 100}%`, minHeight: AI_PANEL_MIN_HEIGHT_PX }
@@ -220,7 +222,7 @@ export function AiPanel({
     >
       <div className="flex items-center gap-2">
         <SparkleIcon className="size-4 text-accent-default" />
-        <h2 className="text-sm font-medium text-text-primary">AI と作る</h2>
+        <h2 className="text-sm font-medium text-text-primary">{t.ai.title}</h2>
         <Badge variant="accent">Beta</Badge>
         <div className="flex-1" />
         {/* 行の高さを変えないよう、ボタンの上下の余白を打ち消す */}
@@ -228,8 +230,8 @@ export function AiPanel({
           variant="ghost"
           size="sm"
           className="-my-1.5 -mr-2 px-sp-xs"
-          aria-label="AI 欄を閉じる"
-          title="AI 欄を閉じる"
+          aria-label={t.ai.close}
+          title={t.ai.close}
           onClick={onClose}
         >
           <ChevronDownIcon />
@@ -239,7 +241,7 @@ export function AiPanel({
       <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         {turns.length === 0 && (
           <p className="text-xs text-text-muted">
-            コードをどう変えたいか、日本語で頼めます。提案は差分で確かめてから適用できます。
+            {t.ai.intro}
           </p>
         )}
         {turns.map((turn) => (
@@ -255,9 +257,9 @@ export function AiPanel({
 
       {access === "login" ? (
         <div className="flex items-center justify-between gap-3 rounded-surface border border-border-subtle bg-bg-raised px-3 py-2.5">
-          <span className="text-sm text-text-secondary">AI と作るにはログインが必要です(下書きは残ります)</span>
+          <span className="text-sm text-text-secondary">{t.ai.loginRequired}</span>
           <Button variant="secondary" size="sm" onClick={onLogin}>
-            ログイン
+            {t.ai.login}
           </Button>
         </div>
       ) : (
@@ -270,7 +272,7 @@ export function AiPanel({
         >
           <textarea
             ref={promptRef}
-            aria-label="AI への依頼"
+            aria-label={t.ai.promptLabel}
             rows={2}
             maxLength={AI_PROMPT_MAX}
             value={draft}
@@ -278,14 +280,14 @@ export function AiPanel({
             onKeyDown={handleKeyDown}
             disabled={access !== "ready"}
             placeholder={
-              turns.length === 0 ? "例: リングを 2 重にして、色を夕焼けっぽくして" : "続けて頼む… 例: もっとゆっくり動かして"
+              turns.length === 0 ? t.ai.placeholderFirst : t.ai.placeholderNext
             }
             className="resize-none bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
           />
           <div className="flex items-center justify-between gap-2">
             <Select items={MODEL_LABELS} value={model} onValueChange={(value) => value && writeModel(value)} disabled={busy}>
               <SelectTrigger
-                aria-label="AI のモデル"
+                aria-label={t.ai.modelLabel}
                 className="h-7 w-auto gap-1 border-transparent bg-transparent px-1.5 text-xs text-text-secondary hover:text-text-primary"
               >
                 <SelectValue />
@@ -296,12 +298,12 @@ export function AiPanel({
                     <span className="flex flex-col gap-0.5 py-0.5">
                       <span className="flex items-baseline gap-2">
                         <span className="text-sm text-text-primary">{m.label}</span>
-                        <span className="font-mono text-[11px] text-text-muted" title="料金の目安">
+                        <span className="font-mono text-[11px] text-text-muted" title={t.ai.priceHint}>
                           {"$".repeat(priceTier(m))}
                         </span>
                       </span>
                       <span className="text-xs text-text-muted">
-                        {m.maker} · {m.note}
+                        {m.maker} · {m.note[locale]}
                       </span>
                     </span>
                   </SelectItem>
@@ -310,7 +312,7 @@ export function AiPanel({
             </Select>
             {busy ? (
               <Button type="button" variant="ghost" size="sm" onClick={() => abortRef.current?.abort()}>
-                停止
+                {t.ai.stop}
               </Button>
             ) : (
               // ⌘↵(Ctrl+↵)でも送れる。画面には出さず、ボタンの説明にだけ書く
@@ -318,10 +320,10 @@ export function AiPanel({
                 type="submit"
                 variant="secondary"
                 size="sm"
-                title="⌘↵ でも送信できます"
+                title={t.ai.sendHint}
                 disabled={!draft.trim() || access !== "ready"}
               >
-                送信
+                {t.ai.send}
               </Button>
             )}
           </div>
@@ -351,6 +353,7 @@ function TurnView({
   onApply: () => void;
   onReject: () => void;
 }) {
+  const { locale, t } = useI18n();
   return (
     <div className="flex flex-col gap-2">
       <p className="max-w-[85%] self-end whitespace-pre-wrap rounded-surface bg-bg-base px-3 py-2 text-sm text-text-primary">
@@ -364,13 +367,13 @@ function TurnView({
               turn.status === "error" ? "text-danger-solid" : turn.reply ? "text-text-primary" : "text-text-muted"
             }`}
           >
-            {turn.reply || (turn.status === "streaming" ? "考えています…" : "")}
+            {turn.reply || (turn.status === "streaming" ? t.ai.thinking : "")}
           </p>
         </div>
         {turn.status === "done" && turn.model && (
           <p className="pl-6 font-mono text-[11px] text-text-muted">
             {findAiModel(turn.model)?.label ?? turn.model}
-            {turn.usage && ` · ${(turn.usage.inputTokens + turn.usage.outputTokens).toLocaleString()} トークン`}
+            {turn.usage && ` · ${t.ai.tokens((turn.usage.inputTokens + turn.usage.outputTokens).toLocaleString(locale))}`}
           </p>
         )}
         {turn.source !== null && turn.stats && (
@@ -378,7 +381,7 @@ function TurnView({
             <ul className="flex flex-wrap gap-x-3 gap-y-1 pl-6 font-mono text-[11px]">
               {turn.errors.length === 0 ? (
                 <li className="text-status-success-solid">
-                  ✓ 静的チェック OK · {byteLength(turn.source)} B / {SIZE_BUDGET_BYTES / 1024} KB
+                  {t.ai.checksOk(byteLength(turn.source), SIZE_BUDGET_BYTES / 1024)}
                 </li>
               ) : (
                 turn.errors.map((error) => (
@@ -395,14 +398,14 @@ function TurnView({
               {pending ? (
                 <>
                   <Button variant="ghost" size="sm" onClick={onReject}>
-                    却下
+                    {t.ai.reject}
                   </Button>
                   <Button variant="secondary" size="sm" onClick={onApply}>
-                    適用
+                    {t.ai.apply}
                   </Button>
                 </>
               ) : (
-                <Badge variant={turn.applied ? "success" : "default"}>{turn.applied ? "適用済み" : "未適用"}</Badge>
+                <Badge variant={turn.applied ? "success" : "default"}>{turn.applied ? t.ai.applied : t.ai.notApplied}</Badge>
               )}
             </div>
           </>

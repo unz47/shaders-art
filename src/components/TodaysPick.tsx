@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderEditorPreview } from "@/components/ShaderEditorPreview";
+import { useI18n } from "@/lib/i18n/client";
 import { findLicense } from "@/lib/submission";
 import type { WorkSummary } from "@/lib/works";
 
@@ -22,6 +23,7 @@ function subscribeReducedMotion(onChange: () => void): () => void {
 function noop() {}
 
 export function TodaysPick({ work, className = "" }: { work: WorkSummary; className?: string }) {
+  const { t } = useI18n();
   const reducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
     () => window.matchMedia(REDUCED_MOTION).matches,
@@ -56,7 +58,7 @@ export function TodaysPick({ work, className = "" }: { work: WorkSummary; classN
         </div>
         {/* 狭い画面では作品名を優先する(タイル全体がリンクなので、ボタンが無くても押せる) */}
         <span className="hidden rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition-transform group-hover:-translate-y-0.5 sm:inline-block">
-          作品を見る →
+          {t.common.viewWork}
         </span>
       </div>
     </Link>

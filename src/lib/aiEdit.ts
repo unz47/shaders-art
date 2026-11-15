@@ -2,6 +2,7 @@
 // モック(MSW)で共有する。応答は Server-Sent Events で、返答文を少しずつ流してから最後に提案をまとめて送る。
 
 import { findAiModel } from "./aiModels";
+import type { Dictionary } from "./i18n";
 import { SIZE_BUDGET_BYTES } from "./submission";
 
 export const AI_PROMPT_MAX = 500;
@@ -56,21 +57,22 @@ export type AiEditEvent =
 
 type Validated = { ok: true; value: ValidAiEditRequest } | { ok: false; errors: string[] };
 
-export function validateAiEditRequest(input: unknown): Validated {
+/** 依頼を確かめる(サーバーとモック)。文言は依頼の言語で */
+export function validateAiEditRequest(input: unknown, t: Dictionary): Validated {
   if (typeof input !== "object" || input === null) {
-    return { ok: false, errors: ["本文が JSON オブジェクトではありません"] };
+    return { ok: false, errors: [t.submission.notObject] };
   }
   const raw = input as Record<string, unknown>;
   const errors: string[] = [];
 
   const source = typeof raw.source === "string" ? raw.source : "";
   if (new TextEncoder().encode(source).length > AI_SOURCE_MAX_BYTES) {
-    errors.push(`コードが長すぎます(${AI_SOURCE_MAX_BYTES / 1024} KB まで)`);
+    errors.push(t.ai.sourceTooLong(AI_SOURCE_MAX_BYTES / 1024));
   }
 
   const prompt = typeof raw.prompt === "string" ? raw.prompt.trim() : "";
-  if (!prompt) errors.push("依頼を入力してください");
-  else if (prompt.length > AI_PROMPT_MAX) errors.push(`依頼は ${AI_PROMPT_MAX} 文字以内にしてください`);
+  if (!prompt) errors.push(t.ai.promptRequired);
+  else if (prompt.length > AI_PROMPT_MAX) errors.push(t.ai.promptTooLong(AI_PROMPT_MAX));
 
   const history = (Array.isArray(raw.history) ? raw.history : [])
     .filter((t): t is AiTurnSummary => typeof t?.prompt === "string" && typeof t?.reply === "string")
@@ -81,7 +83,7 @@ export function validateAiEditRequest(input: unknown): Validated {
   let model: string | null = null;
   if (raw.model !== undefined && raw.model !== null) {
     if (typeof raw.model === "string" && findAiModel(raw.model)) model = raw.model;
-    else errors.push("選べないモデルです");
+    else errors.push(t.ai.unknownModel);
   }
 
   if (errors.length > 0) return { ok: false, errors };
@@ -136,7 +138,7 @@ export type AiEditResult =
  */
 export async function requestAiEdit(
   input: AiEditRequest,
-  { onText, signal }: { onText: (text: string) => void; signal?: AbortSignal },
+  { onText, signal, t }: { onText: (text: string) => void; signal?: AbortSignal; t: Dictionary["ai"] },
 ): Promise<AiEditResult> {
   const res = await fetch("/api/ai/edit", {
     method: "POST",
@@ -146,7 +148,7 @@ export async function requestAiEdit(
   });
   if (!res.ok || !res.body) {
     const data = (await res.json().catch(() => ({}))) as { message?: string; errors?: string[] };
-    const message = data.errors?.join("\n") || data.message || `AI を呼び出せませんでした (${res.status})`;
+    const message = data.errors?.join("\n") || data.message || t.callFailed(res.status);
     return { ok: false, status: res.status, message };
   }
 
@@ -166,5 +168,5 @@ export async function requestAiEdit(
       else return { ok: false, status: res.status, message: event.message };
     }
   }
-  return { ok: false, status: res.status, message: "応答が途中で切れました。もう一度お試しください" };
+  return { ok: false, status: res.status, message: t.cutOff };
 }

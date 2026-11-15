@@ -9,7 +9,8 @@ import { TodaysPick } from "@/components/TodaysPick";
 import { WorkCard } from "@/components/WorkCard";
 import { WorkTile } from "@/components/WorkTile";
 import { useFavorites } from "@/lib/useFavorites";
-import { getHome, type WorkSummary } from "@/lib/works";
+import { useI18n } from "@/lib/i18n/client";
+import { ApiError, getHome, type WorkSummary } from "@/lib/works";
 import { worksHref, type HomeSelection } from "@/lib/worksQuery";
 
 // 仕様: Figma「Home 一覧の見せ方」案 A+B ①(採用)。運営の「収蔵」はやめ、お気に入りに一本化した。
@@ -26,12 +27,13 @@ const UNIFORM_COLUMNS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3
 const FAVORITES_ON_HOME = 4;
 
 function SectionHeading({ title, note, href }: { title: string; note: string; href: string }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-baseline gap-2.5">
       <h2 className="text-base font-medium text-text-primary">{title}</h2>
       <span className="min-w-0 flex-1 truncate text-[13px] text-text-muted">{note}</span>
       <Link href={href} className="text-[13px] text-text-secondary transition-colors hover:text-text-primary">
-        すべて見る →
+        {t.common.seeAll}
       </Link>
     </div>
   );
@@ -73,11 +75,12 @@ function sideWorks(home: HomeSelection<WorkSummary>): WorkSummary[] {
 
 export default function Home() {
   const [home, setHome] = useState<HomeSelection<WorkSummary> | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const favorites = useFavorites();
+  const { t } = useI18n();
 
   useEffect(() => {
-    getHome().then(setHome, (e: unknown) => setError(e instanceof Error ? e.message : ""));
+    getHome().then(setHome, (e: unknown) => setError(e));
   }, []);
 
   const side = home ? sideWorks(home) : [];
@@ -96,18 +99,18 @@ export default function Home() {
         )}
         {error !== null && (
           <EmptyState>
-            <EmptyStateTitle>作品を読み込めませんでした</EmptyStateTitle>
-            <EmptyStateDescription>{error}</EmptyStateDescription>
+            <EmptyStateTitle>{t.common.loadFailed}</EmptyStateTitle>
+            {error instanceof ApiError && <EmptyStateDescription>{t.common.requestFailed(error.status)}</EmptyStateDescription>}
           </EmptyState>
         )}
         {home?.total === 0 && (
           <EmptyState>
-            <EmptyStateTitle>まだ作品がありません</EmptyStateTitle>
+            <EmptyStateTitle>{t.common.noWorksYet}</EmptyStateTitle>
           </EmptyState>
         )}
 
         {home?.pick && (
-          <section aria-label="今日の 1 点" className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:grid-rows-[260px_260px]">
+          <section aria-label={t.home.todaysPick} className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:grid-rows-[260px_260px]">
             <TodaysPick
               work={home.pick}
               className={`col-span-2 aspect-[4/3] sm:aspect-video lg:row-span-2 lg:aspect-auto ${
@@ -126,7 +129,7 @@ export default function Home() {
 
         {home && myFavorites.length > 0 && (
           <section className="flex flex-col gap-5">
-            <SectionHeading title="Your favorites" note={`あなたのお気に入り · ${myFavorites.length}`} href="/me/favorites" />
+            <SectionHeading title="Your favorites" note={t.home.yourFavorites(myFavorites.length)} href="/me/favorites" />
             <div className="grid grid-cols-1 gap-x-sp-lg gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
               {myFavorites.slice(0, FAVORITES_ON_HOME).map((work) => (
                 <WorkCard key={work.slug} work={work} />
@@ -137,14 +140,14 @@ export default function Home() {
 
         {mosaic.length > 0 && (
           <section className="flex flex-col gap-5">
-            <SectionHeading title="Popular" note="お気に入りの多い作品" href={worksHref({ sort: "popular" })} />
+            <SectionHeading title="Popular" note={t.home.popular} href={worksHref({ sort: "popular" })} />
             <Mosaic works={mosaic} />
           </section>
         )}
 
         {home && home.latest.length > 0 && (
           <section className="flex flex-col gap-5">
-            <SectionHeading title="New" note={`新着 · ${home.total}`} href={worksHref({ sort: "new" })} />
+            <SectionHeading title="New" note={t.home.latest(home.total)} href={worksHref({ sort: "new" })} />
             <div className="grid grid-cols-1 gap-x-sp-lg gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
               {home.latest.map((work) => (
                 <WorkCard key={work.slug} work={work} />

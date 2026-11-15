@@ -1,5 +1,5 @@
 import { applyPalette, GIFEncoder, quantize } from "gifenc";
-import { createOffscreenShader } from "./renderStill";
+import { createOffscreenShader, RenderError } from "./renderStill";
 
 // 作品をループする GIF にする(書き出しメニューの「GIF」)。画面を録画するのではなく、
 // 1 コマずつ決まった時刻で描くので、PC の性能に関係なく滑らかになる。
@@ -28,7 +28,7 @@ export async function renderGif(
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) throw new Error("画像を作れませんでした");
+    if (!context) throw new RenderError("no-image");
 
     const frames = Math.max(1, Math.round(seconds * fps));
     const gif = GIFEncoder();

@@ -1,15 +1,20 @@
 import { delay, http, HttpResponse } from "msw";
 import { encodeSseEvent, validateAiEditRequest, type AiEditEvent } from "@/lib/aiEdit";
 import { AI_MODELS, DEFAULT_AI_MODEL_ID } from "@/lib/aiModels";
+import { dictionaryFor, resolveLocale } from "@/lib/i18n";
+import { LOCALE_COOKIE } from "@/lib/i18n/locale";
 import { sourceErrors } from "@/lib/submission";
 
 // POST /api/ai/edit
 // Bedrock を呼ばずに、本物と同じ形(SSE)で返す。提案は依頼文を先頭にコメントとして足すだけ。
 // 「解説」「説明」「教えて」を含む依頼には、コードの提案なしで答える(質問への回答の確認用)。
 export const aiEdit = http.post("/api/ai/edit", async ({ request }) => {
-  const parsed = validateAiEditRequest(await request.json().catch(() => null));
+  // 本物と同じく、Cookie → ブラウザの言語 → 英語 の順で文言の言語を決める(モックはブラウザで動く)
+  const cookie = document.cookie.match(new RegExp(`(?:^|; )${LOCALE_COOKIE}=([^;]*)`))?.[1];
+  const t = dictionaryFor(resolveLocale({ cookie, acceptLanguage: navigator.languages.join(",") }));
+  const parsed = validateAiEditRequest(await request.json().catch(() => null), t);
   if (!parsed.ok) {
-    return HttpResponse.json({ message: "依頼の内容に問題があります", errors: parsed.errors }, { status: 400 });
+    return HttpResponse.json({ message: t.ai.badRequest, errors: parsed.errors }, { status: 400 });
   }
   const { source, prompt, model } = parsed.value;
   const question = /解説|説明|教えて/.test(prompt);
@@ -31,7 +36,7 @@ export const aiEdit = http.post("/api/ai/edit", async ({ request }) => {
         type: "done",
         reply,
         source: proposed,
-        errors: proposed === null ? [] : sourceErrors(proposed),
+        errors: proposed === null ? [] : sourceErrors(proposed, t.submission),
         model: model ?? DEFAULT_AI_MODEL_ID,
         usage: { inputTokens: 700 + source.length, outputTokens: 400 },
       });

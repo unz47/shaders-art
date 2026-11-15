@@ -4,6 +4,7 @@ import { BedrockRuntimeClient, ConverseStreamCommand } from "@aws-sdk/client-bed
 import { betaRefusalFallbackMiddleware, BetaFallbackState, type Anthropic } from "@anthropic-ai/sdk";
 import type { AiEditEvent, AiUsage, ValidAiEditRequest } from "../aiEdit";
 import { AI_MODELS, type AiModel, findAiModel } from "../aiModels";
+import type { Dictionary } from "../i18n";
 import { SIZE_BUDGET_BYTES, sourceErrors } from "../submission";
 
 // AI と作る の推論は Amazon Bedrock で行う。認証は Lambda の実行ロール(SigV4)なので API キーは持たない。
@@ -65,56 +66,60 @@ export function thinkingParams(model: string) {
   } as const;
 }
 
-const RULES = `あなたは shaders.art のシェーダー編集アシスタントです。利用者はブラウザのエディタで GLSL の作品を書いていて、あなたは依頼に応じてそのコードを書き換えます。
+// AI への指示は英語で書く。日本語で書くと、英語の依頼にも日本語で答えてしまった(Sonnet 4.6・Haiku 4.5・Qwen3 Coder、
+// 2026-10-29)。説明文は依頼と同じ言語で書かせ、依頼の言語が分からないとき(コードだけを貼ったときなど)は画面の言語にする
+const RULES = `You are the shader editing assistant for shaders.art. The user writes GLSL works in an in-browser editor, and you rewrite their code as requested.
 
-# 作品の規約
-- 作品は vec4 render(vec2 uv, vec2 p) を定義する GLSL のコード片です。main 関数・precision・uniform・varying の宣言は書きません(実行環境が用意します)。補助関数や定数は render より前に書けます。
-- uv は 0〜1 の座標です。p は中心が原点で、縦が -1〜1、横はアスペクト比に合わせて伸びた座標です。
-- 使える uniform: float time(秒)、vec2 resolution(ピクセル)、float attention(0〜1。作品が見られているほど 1 に近づく)、vec2 mouse(p と同じ座標系のカーソル位置)。
-- gl_FragCoord は使えません。
-- コードは ${SIZE_BUDGET_BYTES} バイト以内。for ループの上限は数値リテラルで 64 回以下にし、while は使いません。
-- 1 フレームを 8 ミリ秒以内で描ける重さにします。`;
+# Rules for works
+- A work is a GLSL snippet that defines vec4 render(vec2 uv, vec2 p). Do not write a main function or any precision, uniform, or varying declarations (the runtime provides them). Helper functions and constants can go before render.
+- uv is in 0–1. p has its origin at the center, runs from -1 to 1 vertically, and stretches horizontally with the aspect ratio.
+- Available uniforms: float time (seconds), vec2 resolution (pixels), float attention (0–1; closer to 1 the more the work is being watched), vec2 mouse (the cursor position in the same coordinates as p).
+- gl_FragCoord is not available.
+- Keep the code within ${SIZE_BUDGET_BYTES} bytes. Bound every for loop with a numeric literal of at most 64 iterations, and do not use while.
+- Keep it light enough to draw a frame within 8 ms.`;
 
-const COMMON_REPLY_RULES = `- 依頼された部分以外のコード・コメント・書き方は、できるだけそのまま残します。
-- 依頼が規約と両立しないときは、規約の範囲で近いものを提案し、その旨を書きます。`;
+const commonReplyRules = (t: Dictionary) => `- Write your explanation in the same language as the request under "# Request". If you can't tell its language, write in ${t.ai.replyLanguage}.
+- Keep the code, comments, and style outside the requested part as they are, as much as possible.
+- If the request conflicts with the rules, propose the closest thing within the rules and say so.`;
 
 /** Claude 用(コードはツールで受け取る) */
-export const SYSTEM_PROMPT = `${RULES}
+export const systemPrompt = (t: Dictionary) => `${RULES}
 
-# 返答のしかた
-- コードを変える依頼には、何をどう変えたかを日本語で 1〜2 文書いてから、propose_shader ツールで編集後のコード全文を渡します。差分ではなく全文を渡してください。
-- 質問や解説の依頼など、コードを変える必要がないときは、ツールを使わず日本語で簡潔に答えます。
-${COMMON_REPLY_RULES}`;
+# How to reply
+- For a request that changes the code, write one or two sentences on what you changed and how, then pass the full edited code to the propose_shader tool. Pass the full code, not a diff.
+- When the code doesn't need to change (questions, explanations), answer briefly without using the tool.
+${commonReplyRules(t)}`;
 
 /** Claude 以外用(コードは返答中のコードブロックで受け取る) */
-export const SYSTEM_PROMPT_CODE_BLOCK = `${RULES}
+export const systemPromptCodeBlock = (t: Dictionary) => `${RULES}
 
-# 返答のしかた
-- コードを変える依頼には、何をどう変えたかを日本語で 1〜2 文書いてから、編集後のコード全文を \`\`\`glsl のコードブロック 1 つで示します。差分ではなく全文を示し、コードブロックの後には何も書きません。
-- 質問や解説の依頼など、コードを変える必要がないときは、コードブロックを使わず日本語で簡潔に答えます。
-${COMMON_REPLY_RULES}`;
+# How to reply
+- For a request that changes the code, write one or two sentences on what you changed and how, then show the full edited code in a single \`\`\`glsl code block. Show the full code, not a diff, and write nothing after the code block.
+- When the code doesn't need to change (questions, explanations), answer briefly without a code block.
+${commonReplyRules(t)}`;
 
 export const PROPOSE_SHADER_TOOL = {
   name: "propose_shader",
-  description: "編集後の作品のコード全文を提案する。利用者は差分を確かめてから適用する。",
+  description: "Propose the full edited code of the work. The user reviews the diff before applying it.",
   input_schema: {
     type: "object",
     properties: {
-      source: { type: "string", description: "vec4 render(vec2 uv, vec2 p) を含む、編集後のコード全文" },
+      source: { type: "string", description: "The full edited code, including vec4 render(vec2 uv, vec2 p)" },
     },
     required: ["source"],
   },
 } satisfies Anthropic.Beta.BetaTool;
 
+// 見出しは英語にしておく(日本語だと、英語の依頼にも日本語で答えやすくなる。説明文の言語は依頼に合わせる)
 export function buildUserMessage({ source, prompt, history }: Pick<ValidAiEditRequest, "source" | "prompt" | "history">): string {
   const parts: string[] = [];
   if (history.length > 0) {
     parts.push(
-      "# これまでのやりとり(古い順)",
-      history.map((t) => `- 依頼: ${t.prompt}\n  返答: ${t.reply}`).join("\n"),
+      "# Conversation so far (oldest first)",
+      history.map((t) => `- Request: ${t.prompt}\n  Reply: ${t.reply}`).join("\n"),
     );
   }
-  parts.push("# 現在のコード", "```glsl", source || "(空)", "```", "# 依頼", prompt);
+  parts.push("# Current code", "```glsl", source || "(empty)", "```", "# Request", prompt);
   return parts.join("\n\n");
 }
 
@@ -129,13 +134,18 @@ export interface AiEditOutcome {
   usage: unknown;
 }
 
-/** 依頼を 1 回投げる。返答文は届くたびに onText に渡す。止めたいときは signal を abort する */
+/**
+ * 依頼を 1 回投げる。返答文は届くたびに onText に渡す。止めたいときは signal を abort する。
+ * t は依頼の言語の文言(エラーと静的チェックの文、AI の説明文の言語の目安に使う)
+ */
 export function runAiEdit(
   cfg: AiConfig,
   request: ValidAiEditRequest,
-  { onText, signal }: { onText: (text: string) => void; signal: AbortSignal },
+  { onText, signal, t }: { onText: (text: string) => void; signal: AbortSignal; t: Dictionary },
 ): Promise<AiEditOutcome> {
-  return usesMessagesApi(cfg.model) ? runClaude(cfg, request, onText, signal) : runConverse(cfg, request, onText, signal);
+  return usesMessagesApi(cfg.model)
+    ? runClaude(cfg, request, onText, signal, t)
+    : runConverse(cfg, request, onText, signal, t);
 }
 
 // ---- Claude(Messages API。Claude Platform on AWS か、Bedrock の InvokeModel か bedrock-mantle)----
@@ -170,12 +180,13 @@ async function runClaude(
   request: ValidAiEditRequest,
   onText: (text: string) => void,
   signal: AbortSignal,
+  t: Dictionary,
 ): Promise<AiEditOutcome> {
   const params = {
     model: cfg.model,
     max_tokens: MAX_TOKENS,
     ...thinkingParams(cfg.model),
-    system: SYSTEM_PROMPT,
+    system: systemPrompt(t),
     tools: [PROPOSE_SHADER_TOOL],
     messages: [{ role: "user", content: buildUserMessage(request) }],
   } satisfies Anthropic.Beta.MessageCreateParamsNonStreaming;
@@ -187,7 +198,7 @@ async function runClaude(
   const model = via === "bedrock-claude" ? cfg.model : message.model;
   const usage = { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens };
   return {
-    event: withUsage(toFinalEvent(message), model, usage),
+    event: withUsage(toFinalEvent(message, t), model, usage),
     model,
     stopReason: message.stop_reason,
     usage: message.usage,
@@ -213,11 +224,9 @@ function messagesStream(
 }
 
 /** Claude の完成した応答を、ブラウザに送る done(または error)イベントにする */
-export function toFinalEvent(message: Anthropic.Beta.BetaMessage): AiEditEvent {
-  if (message.stop_reason === "refusal") {
-    return { type: "error", message: "この依頼には応えられませんでした。言い方を変えてお試しください" };
-  }
-  if (message.stop_reason === "max_tokens") return TRUNCATED;
+export function toFinalEvent(message: Anthropic.Beta.BetaMessage, t: Dictionary): AiEditEvent {
+  if (message.stop_reason === "refusal") return { type: "error", message: t.ai.refused };
+  if (message.stop_reason === "max_tokens") return { type: "error", message: t.ai.truncated };
   // 断られて別のモデルに切り替わった場合は、切り替え(fallback ブロック)より前の出力を使わない
   const blocks = message.content.slice(message.content.findLastIndex((b) => b.type === "fallback") + 1);
   const reply = blocks
@@ -227,7 +236,7 @@ export function toFinalEvent(message: Anthropic.Beta.BetaMessage): AiEditEvent {
   const tool = blocks.findLast((b) => b.type === "tool_use" && b.name === PROPOSE_SHADER_TOOL.name);
   const input = tool?.type === "tool_use" ? (tool.input as { source?: unknown }) : undefined;
   const source = typeof input?.source === "string" ? input.source : null;
-  return doneEvent(reply, source);
+  return doneEvent(reply, source, t);
 }
 
 // ---- Claude 以外(bedrock-runtime の Converse API)----
@@ -239,12 +248,13 @@ async function runConverse(
   request: ValidAiEditRequest,
   onText: (text: string) => void,
   signal: AbortSignal,
+  t: Dictionary,
 ): Promise<AiEditOutcome> {
   cachedRuntime ??= new BedrockRuntimeClient({});
   const response = await cachedRuntime.send(
     new ConverseStreamCommand({
       modelId: cfg.model,
-      system: [{ text: SYSTEM_PROMPT_CODE_BLOCK }],
+      system: [{ text: systemPromptCodeBlock(t) }],
       messages: [{ role: "user", content: [{ text: buildUserMessage(request) }] }],
       inferenceConfig: { maxTokens: MAX_TOKENS },
     }),
@@ -271,14 +281,16 @@ async function runConverse(
     if (event.metadata) usage = event.metadata.usage ?? null;
   }
 
-  if (stopReason === "max_tokens") return { event: TRUNCATED, model: cfg.model, stopReason, usage };
+  if (stopReason === "max_tokens") {
+    return { event: { type: "error", message: t.ai.truncated }, model: cfg.model, stopReason, usage };
+  }
   if (stopReason === "content_filtered" || stopReason === "guardrail_intervened") {
-    const event: AiEditEvent = { type: "error", message: "この依頼には応えられませんでした。言い方を変えてお試しください" };
+    const event: AiEditEvent = { type: "error", message: t.ai.refused };
     return { event, model: cfg.model, stopReason, usage };
   }
   const { reply, source } = parseCodeBlockReply(text);
   const tokens = usage && { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 };
-  return { event: withUsage(doneEvent(reply, source), cfg.model, tokens), model: cfg.model, stopReason, usage };
+  return { event: withUsage(doneEvent(reply, source, t), cfg.model, tokens), model: cfg.model, stopReason, usage };
 }
 
 const FENCE = "```";
@@ -302,17 +314,12 @@ export function parseCodeBlockReply(text: string): { reply: string; source: stri
   return { reply: [before, after].filter(Boolean).join("\n\n"), source: match[1] ?? "" };
 }
 
-const TRUNCATED: AiEditEvent = {
-  type: "error",
-  message: "返答が長くなりすぎて途中で切れました。依頼を小さく分けてお試しください",
-};
-
 /** done イベントに、答えたモデルと使ったトークンの数を添える(パネルでやりとりごとに出す) */
 function withUsage(event: AiEditEvent, model: string, usage: AiUsage | null): AiEditEvent {
   if (event.type !== "done") return event;
   return usage ? { ...event, model, usage } : { ...event, model };
 }
 
-function doneEvent(reply: string, source: string | null): AiEditEvent {
-  return { type: "done", reply, source, errors: source === null ? [] : sourceErrors(source) };
+function doneEvent(reply: string, source: string | null, t: Dictionary): AiEditEvent {
+  return { type: "done", reply, source, errors: source === null ? [] : sourceErrors(source, t.submission) };
 }
