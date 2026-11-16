@@ -24,7 +24,16 @@ export class WafStack extends Stack {
           name: "AWSManagedRulesCommonRuleSet",
           priority: 0,
           overrideAction: { none: {} },
-          statement: { managedRuleGroupStatement: { vendorName: "AWS", name: "AWSManagedRulesCommonRuleSet" } },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: "AWS",
+              name: "AWSManagedRulesCommonRuleSet",
+              // SizeRestrictions_BODY は本文が 8 KB を超えるリクエストを止める。作品の投稿(コードは 12 KB まで)や
+              // AI と作るの依頼(コードとやりとりの履歴)は普通に超えるので、数えるだけにする。
+              // 大きさはアプリ側(lib/submission・lib/aiEdit)で確かめている
+              ruleActionOverrides: [{ name: "SizeRestrictions_BODY", actionToUse: { count: {} } }],
+            },
+          },
           visibilityConfig: {
             sampledRequestsEnabled: true,
             cloudWatchMetricsEnabled: true,

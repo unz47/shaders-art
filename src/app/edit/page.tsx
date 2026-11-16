@@ -1,31 +1,59 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
 import { Input } from "@frost-ui/react/atoms/input";
 import { Label } from "@frost-ui/react/atoms/label";
 import { Textarea } from "@frost-ui/react/atoms/textarea";
+import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@frost-ui/react/organisms/accordion";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@frost-ui/react/organisms/dialog";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@frost-ui/react/organisms/select";
-import { type AiAccess, AiPanel } from "@/components/AiPanel";
+import {
+  Menu,
+  MenuContent,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@frost-ui/react/organisms/menu";
+import { useToast } from "@frost-ui/react/organisms/toast";
+import { AI_PANEL_MIN_HEIGHT_PX, type AiAccess, AiPanel } from "@/components/AiPanel";
 import { CodeDiff } from "@/components/CodeDiff";
 import { Header } from "@/components/Header";
 import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview, type ShaderEditorStats } from "@/components/ShaderEditorPreview";
+import { SparkleIcon } from "@/components/SparkleIcon";
+import { SplitHandle } from "@/components/SplitHandle";
 import {
   AUTHOR_MAX,
   byteLength,
   checkLoopsBounded,
+  DEFAULT_LICENSE,
   DESCRIPTION_MAX,
   FRAME_TIME_BUDGET_MS,
-  LICENSES,
   SIZE_BUDGET_BYTES,
   TITLE_MAX,
   type WorkVisibility,
 } from "@/lib/submission";
+import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
+import type { Dictionary } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n/client";
+import { renderGif } from "@/lib/renderGif";
+import { RenderError, renderStillPng } from "@/lib/renderStill";
+import { buildStandaloneHtml, downloadBlob, exportFileName, toShadertoy } from "@/lib/shaderExport";
+import { decodeSource, embedSnippet, sourceTokenFromHash, stageUrlForSource } from "@/lib/stageUrl";
+import { useFullscreen } from "@/lib/useFullscreen";
 import { diffLines, diffStats } from "@/lib/lineDiff";
 import { loginHref, useSession } from "@/lib/useSession";
 import { submitWork } from "@/lib/works";
@@ -42,18 +70,17 @@ const STARTER_SOURCE = ["vec4 render(vec2 uv, vec2 p) {", "  return vec4(uv, 0.5
 
 // プリセット: それぞれ違う技法を示す短い出発点。既存の収蔵作品(Plasmaなど)を
 // そのまま複製すると紛らわしいので、別に用意した簡易版。
-const PRESETS: { id: string; label: string; source: string }[] = [
-  { id: "gradient", label: "グラデーション", source: STARTER_SOURCE },
+// 名前は lib/i18n の edit.presets
+const PRESETS: { id: keyof Dictionary["edit"]["presets"]; source: string }[] = [
+  { id: "gradient", source: STARTER_SOURCE },
   {
     id: "waves",
-    label: "波",
     source: ["vec4 render(vec2 uv, vec2 p) {", "  float v = sin((p.x + time) * 6.0) * 0.5 + 0.5;", "  return vec4(vec3(v), 1.0);", "}"].join(
       "\n",
     ),
   },
   {
     id: "rings",
-    label: "リング",
     source: [
       "vec4 render(vec2 uv, vec2 p) {",
       "  float r = length(p);",
@@ -64,7 +91,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "mouse",
-    label: "マウス",
     source: [
       "// uniforms: time, resolution, attention, mouse",
       "vec4 render(vec2 uv, vec2 p) {",
@@ -76,7 +102,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "kaleidoscope",
-    label: "カレイドスコープ",
     source: [
       "vec4 render(vec2 uv, vec2 p) {",
       "  float segments = 8.0;",
@@ -91,7 +116,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "domain-warp",
-    label: "ドメインワーピング",
     source: [
       "float hash(vec2 p) {",
       "  return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);",
@@ -114,7 +138,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "sphere",
-    label: "疑似3D球体",
     source: [
       "float sdSphere(vec3 p, float r) {",
       "  return length(p) - r;",
@@ -140,7 +163,6 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
   {
     id: "fractal",
-    label: "フラクタル",
     source: [
       "vec4 render(vec2 uv, vec2 p) {",
       "  vec2 c = p * 1.2 + vec2(-0.5, 0.0);",
@@ -158,9 +180,40 @@ const PRESETS: { id: string; label: string; source: string }[] = [
   },
 ];
 
-// 下書きはこのブラウザに自動保存する。投稿前のログインで Hosted UI に遷移しても
-// 書いたコードが消えないように。
+// 下書き(コードとタイトル)はこのブラウザに自動保存する。投稿前のログインで Hosted UI に
+// 遷移しても書いたものが消えないように。タイトルは後から足したので別のキーに置く
+// (既存の下書きはコードの文字列そのままで保存されている)。
 const DRAFT_KEY = "shaders-art:edit-draft";
+const TITLE_KEY = "shaders-art:edit-title";
+// コード欄とプレビュー欄の境界の位置(右側の幅の割合)。このブラウザでの好みとして覚えておく
+const SPLIT_KEY = "shaders-art:edit-split";
+const DEFAULT_PREVIEW_RATIO = 0.45;
+// コード欄と AI 欄の境界の位置(AI 欄の高さの割合)。動かしていなければ保存しない(AI 欄は中身に合わせた高さ)
+const AI_SPLIT_KEY = "shaders-art:edit-ai-split";
+// AI 欄を閉じているか。閉じたときだけ保存する
+const AI_CLOSED_KEY = "shaders-art:edit-ai-closed";
+// 書き出しメニューの PNG の大きさ。壁紙や SNS でよく使うもの(名前は lib/i18n の edit.stillSizes)
+const STILL_SIZES = [
+  { width: 1920, height: 1080, suffix: "1920x1080" },
+  { width: 3840, height: 2160, suffix: "4k" },
+  { width: 1080, height: 1920, suffix: "1080x1920" },
+  { width: 1080, height: 1080, suffix: "1080x1080" },
+] as const;
+
+// 書き出しメニューの GIF。長さと大きさの組み合わせ(20fps)。大きく長いほどファイルも大きくなる(名前は lib/i18n の edit.gifPresets)
+const GIF_PRESETS = [
+  { width: 480, height: 270, seconds: 3, suffix: "3s" },
+  { width: 640, height: 360, seconds: 5, suffix: "5s" },
+  { width: 480, height: 480, seconds: 5, suffix: "5s-square" },
+] as const;
+const GIF_FPS = 20;
+
+// 境界をどこまで動かせるか(それぞれの欄の最小幅)。プレビューは再生ボタンとバッジの行が
+// 折り返さない幅にする
+const MIN_CODE_WIDTH_PX = 360;
+const MIN_PREVIEW_WIDTH_PX = 360;
+// 上下の境界の下限。コード欄の側はタイトルの行とコード数行ぶん
+const MIN_CODE_HEIGHT_PX = 200;
 
 function readDraft(): string | null {
   try {
@@ -184,6 +237,62 @@ function writeDraft(source: string | null) {
   }
 }
 
+function readTitle(): string | null {
+  try {
+    return localStorage.getItem(TITLE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function readSplit(key: string): number | null {
+  try {
+    const ratio = Number(localStorage.getItem(key));
+    return ratio > 0 && ratio < 1 ? ratio : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSplit(key: string, ratio: number | null) {
+  try {
+    if (ratio === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, String(ratio));
+  } catch {
+    // 覚えられなくても、大きさは変えられる
+  }
+}
+
+function readAiClosed(): boolean {
+  try {
+    return localStorage.getItem(AI_CLOSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeAiClosed(closed: boolean) {
+  try {
+    if (closed) localStorage.setItem(AI_CLOSED_KEY, "1");
+    else localStorage.removeItem(AI_CLOSED_KEY);
+  } catch {
+    // 覚えられなくても、開け閉めはできる
+  }
+}
+
+function writeTitle(title: string | null) {
+  try {
+    if (!title) localStorage.removeItem(TITLE_KEY);
+    else localStorage.setItem(TITLE_KEY, title);
+  } catch {
+    // writeDraft と同じく、保存できなくても編集は続けられる
+  }
+}
+
+// 投稿ダイアログのライセンスの選択肢。ライセンスの名前ではなく、ほかの人が何をしてよいかで選んでもらう
+// (lib/submission の LICENSES のうち、新しい投稿で選べるもの。文言は lib/i18n の edit.licenseChoices)
+const LICENSE_CHOICES = ["shaders-art-standard", "CC-BY-4.0"] as const;
+
 type SubmitForm = {
   title: string;
   author: string;
@@ -195,7 +304,7 @@ type SubmitForm = {
 const EMPTY_FORM: SubmitForm = {
   title: "",
   author: "",
-  license: LICENSES[0].id,
+  license: DEFAULT_LICENSE,
   visibility: "public",
   tags: "",
   description: "",
@@ -211,6 +320,8 @@ export default function EditPage() {
   const [hasRendered, setHasRendered] = useState(false);
   // AI パネルが出している未適用の提案
   const [proposal, setProposal] = useState<{ turnId: number; source: string } | null>(null);
+  // 取り消し・やり直しの履歴(lib/editHistory.ts)。手での入力は止まったところで記録する
+  const [history, setHistory] = useState(() => createHistory(STARTER_SOURCE));
 
   const session = useSession();
   const router = useRouter();
@@ -218,10 +329,45 @@ export default function EditPage() {
   const [form, setForm] = useState<SubmitForm>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitErrors, setSubmitErrors] = useState<string[]>([]);
+  // Pre-publish checks は普段は閉じておく(落ちているものは閉じていても見せる)
+  const [checksOpen, setChecksOpen] = useState(false);
+  // 右側(プレビュー)の幅の割合。境界(SplitHandle)のドラッグで変える
+  const [previewRatio, setPreviewRatio] = useState(DEFAULT_PREVIEW_RATIO);
+  const columnsRef = useRef<HTMLDivElement>(null);
+  // AI 欄の高さの割合。左の欄の上下の境界のドラッグで変える。null なら中身に合わせた高さ
+  const [aiPanelRatio, setAiPanelRatio] = useState<number | null>(null);
+  const codeColumnRef = useRef<HTMLDivElement>(null);
+  // AI 欄を出しているか。閉じている間は左下の FAB で開き、開いている間は AI 欄の見出しのボタンで閉じる
+  // (隠すだけなので、閉じても会話は残る)
+  const [aiPanelOpen, setAiPanelOpen] = useState(true);
+  const fabRef = useRef<HTMLButtonElement>(null);
+  // 閉じるボタンは押すと消えるので、閉じたら FAB にフォーカスを移す(開いたときは AiPanel が入力欄に移す)。
+  // 保存していた「閉じた状態」を読み込んだときは移さない
+  const aiPanelToggled = useRef(false);
+  // プレビューの全画面表示
+  const stageRef = useRef<HTMLDivElement>(null);
+  const fullscreen = useFullscreen(stageRef);
+  const toast = useToast();
+  const { t } = useI18n();
+  // マウスがプレビューの上で止まっている(または外にある)間は true。全画面ボタンを隠す
+  const [pointerIdle, setPointerIdle] = useState(true);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 保存済みの下書きを復元する。サーバーとハイドレーション時は undefined(localStorage が無い)、
   // その直後のブラウザでの再レンダーで実際の値(無ければ null)になる。
   const savedDraft = useSyncExternalStore<string | null | undefined>(subscribeNothing, readDraft, () => undefined);
+  const savedTitle = useSyncExternalStore<string | null | undefined>(subscribeNothing, readTitle, () => undefined);
+  const savedSplit = useSyncExternalStore<number | null | undefined>(
+    subscribeNothing,
+    () => readSplit(SPLIT_KEY),
+    () => undefined,
+  );
+  const savedAiSplit = useSyncExternalStore<number | null | undefined>(
+    subscribeNothing,
+    () => readSplit(AI_SPLIT_KEY),
+    () => undefined,
+  );
+  const savedAiClosed = useSyncExternalStore<boolean | undefined>(subscribeNothing, readAiClosed, () => undefined);
   const [draftChecked, setDraftChecked] = useState(false);
   if (!draftChecked && savedDraft !== undefined) {
     // レンダー中に 1 回だけ state を合わせる(エフェクトで setState すると描画が二重になる)
@@ -229,13 +375,168 @@ export default function EditPage() {
     if (savedDraft !== null && savedDraft !== STARTER_SOURCE) {
       setCode(savedDraft);
       setCompiledSource(savedDraft);
+      setHistory(createHistory(savedDraft));
+    }
+    if (savedTitle) setForm((f) => ({ ...f, title: savedTitle }));
+    if (savedSplit) setPreviewRatio(savedSplit);
+    if (savedAiSplit) setAiPanelRatio(savedAiSplit);
+    if (savedAiClosed) setAiPanelOpen(false);
+  }
+
+  // 学習(/learn)の「/edit で開く」から来たとき(#src=…)は、そのコードを開く。
+  // 下書きを戻したあとで差し替え、下書きは履歴に残す(元に戻す で戻れる)。
+  // 再読み込みでもう一度差し替えないよう、# 以降は消しておく。消したあとでエフェクトがやり直されても
+  // (開発中の Strict Mode など)開けるよう、読んだ値は ref に残し、開き終えたら捨てる
+  const linkedSourceToken = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!draftChecked) return;
+    if (linkedSourceToken.current === undefined) {
+      linkedSourceToken.current = sourceTokenFromHash(window.location.hash);
+      if (linkedSourceToken.current) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }
+    const token = linkedSourceToken.current;
+    if (!token) return;
+    let cancelled = false;
+    decodeSource(token).then(
+      (source) => {
+        if (cancelled) return;
+        linkedSourceToken.current = null;
+        setHistory((h) => commit(h, source));
+        setCode(source);
+        setCompiledSource(source);
+        setHasRendered(false);
+        setResetToken((n) => n + 1);
+        toast.add({ title: t.edit.openedFromLink, description: t.edit.openedFromLinkHint });
+      },
+      () => {
+        if (cancelled) return;
+        linkedSourceToken.current = null;
+        toast.add({ title: t.edit.openLinkFailed, priority: "high" });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // 開いたときに 1 回だけ。toast と t は依存に入れない(言語を切り替えても開き直さない)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftChecked]);
+
+  // マウスがプレビューの上で動いたら全画面ボタン(とカーソル)を出し、2 秒止まったら隠す
+  function showStageChrome() {
+    setPointerIdle(false);
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => setPointerIdle(true), 2000);
+  }
+
+  function hideStageChrome() {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    setPointerIdle(true);
+  }
+
+  function toggleFullscreen() {
+    showStageChrome();
+    fullscreen.toggle();
+  }
+
+  // 書き出しは、いまプレビューに映っているコード(AI の提案を表示中ならその提案)を対象にする
+  async function exportPng(size: (typeof STILL_SIZES)[number]) {
+    try {
+      // プレビューと同じ時刻のコマを描く
+      const blob = await renderStillPng(exportSource, { width: size.width, height: size.height, time: stats.elapsed });
+      downloadBlob(blob, exportFileName(form.title, size.suffix, "png"));
+    } catch (error) {
+      toast.add({ title: t.edit.imageFailed, description: renderErrorMessage(error, t), priority: "high" });
     }
   }
+
+  // GIF は数秒かかるので、進み具合を「書き出し」ボタンに出す(書き出し中は押せない)
+  const [gifProgress, setGifProgress] = useState<number | null>(null);
+
+  async function exportGif(preset: (typeof GIF_PRESETS)[number]) {
+    setGifProgress(0);
+    try {
+      const blob = await renderGif(exportSource, {
+        width: preset.width,
+        height: preset.height,
+        seconds: preset.seconds,
+        fps: GIF_FPS,
+        startTime: stats.elapsed,
+        onProgress: setGifProgress,
+      });
+      downloadBlob(blob, exportFileName(form.title, preset.suffix, "gif"));
+    } catch (error) {
+      toast.add({ title: t.edit.gifFailed, description: renderErrorMessage(error, t), priority: "high" });
+    } finally {
+      setGifProgress(null);
+    }
+  }
+
+  function exportHtml() {
+    const html = buildStandaloneHtml(exportSource, { title: form.title });
+    downloadBlob(new Blob([html], { type: "text/html" }), exportFileName(form.title, "", "html"));
+  }
+
+  function copyText(text: string, title: string, description: string) {
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => toast.add({ title, description }))
+      .catch(() => toast.add({ title: t.work.copyFailed, priority: "high" }));
+  }
+
+  function copyForShadertoy() {
+    copyText(toShadertoy(exportSource, { title: form.title }), t.work.copied, t.edit.shadertoyHint);
+  }
+
+  function copyStageUrl() {
+    if (!stageUrl) return;
+    copyText(
+      stageUrl,
+      t.work.stageUrlCopied,
+      t.work.stageUrlHint,
+    );
+  }
+
+  function copyEmbed() {
+    if (!stageUrl) return;
+    copyText(embedSnippet(stageUrl, form.title), t.work.embedCopied, t.work.embedHint);
+  }
+
+  useEffect(
+    () => () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    },
+    [],
+  );
+
+  function changePreviewRatio(ratio: number) {
+    setPreviewRatio(ratio);
+    writeSplit(SPLIT_KEY, ratio);
+  }
+
+  function changeAiPanelRatio(ratio: number | null) {
+    setAiPanelRatio(ratio);
+    writeSplit(AI_SPLIT_KEY, ratio);
+  }
+
+  function changeAiPanelOpen(open: boolean) {
+    aiPanelToggled.current = true;
+    setAiPanelOpen(open);
+    writeAiClosed(!open);
+  }
+
+  useEffect(() => {
+    if (!aiPanelToggled.current) return;
+    aiPanelToggled.current = false;
+    if (!aiPanelOpen) fabRef.current?.focus();
+  }, [aiPanelOpen]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setCompiledSource(code);
       writeDraft(code);
+      setHistory((h) => commit(h, code));
     }, 400);
     return () => clearTimeout(timer);
   }, [code]);
@@ -250,11 +551,33 @@ export default function EditPage() {
   }
 
   function applySource(source: string) {
+    // 差し替え(プリセット・リセット・AI の提案の適用)は 1 段として記録する。
+    // まだ記録していない手での入力があれば、先にそれを 1 段にしておく
+    setHistory((h) => commit(commit(h, code), source));
     setCode(source);
     setCompiledSource(source);
     setProposal(null);
     setHasRendered(false);
     setResetToken((t) => t + 1);
+  }
+
+  // 入力が止まる前(まだ記録していない分)があれば、それも 1 段として扱う
+  const canUndo = proposal === null && (history.past.length > 0 || code !== history.present);
+  const canRedo = proposal === null && history.future.length > 0 && code === history.present;
+
+  function moveHistory(next: EditHistory) {
+    setHistory(next);
+    setCode(next.present);
+    setCompiledSource(next.present);
+    setHasRendered(false);
+  }
+
+  function handleUndo() {
+    if (canUndo) moveHistory(undo(commit(history, code)));
+  }
+
+  function handleRedo() {
+    if (canRedo) moveHistory(redo(history));
   }
 
   function handlePropose(turnId: number, source: string) {
@@ -273,19 +596,34 @@ export default function EditPage() {
 
   // 提案があれば、プレビューとチェックはその提案のコードを見る
   const checkedSource = proposal?.source ?? code;
+  // プレビューに映っているコード(書き出しの対象)。コンパイルできているときだけ書き出せる
+  const exportSource = proposal?.source ?? compiledSource;
+  const canExport = hasRendered && stats.error === null;
+  // 配信背景・埋め込み用の URL(コードを圧縮して # に入れる)。圧縮は非同期なので、コピーの
+  // クリックの時点で作っていると、ブラウザによってはクリップボードへの書き込みを断られる。先に作っておく
+  const [stageUrl, setStageUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void stageUrlForSource(window.location.origin, exportSource).then((url) => {
+      if (!cancelled) setStageUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [exportSource]);
   const diff = useMemo(() => (proposal ? diffLines(code, proposal.source) : null), [code, proposal]);
   const diffCount = diff ? diffStats(diff) : null;
 
   const bytes = byteLength(checkedSource);
   const hasFragCoord = checkedSource.includes("gl_FragCoord");
-  const loopCheck = checkLoopsBounded(checkedSource);
+  const loopCheck = checkLoopsBounded(checkedSource, t.submission);
 
-  const checks: { key: string; label: string; ok: boolean | null; detail: string }[] = [
+  const checks: PrePublishCheck[] = [
     {
       key: "compiles",
       label: "Compiles",
       ok: hasRendered ? stats.error === null : null,
-      detail: !hasRendered ? "確認中…" : (stats.error ?? "WebGL2 · GLSL ES 3.00"),
+      detail: !hasRendered ? t.edit.checking : (stats.error ?? "WebGL2 · GLSL ES 3.00"),
     },
     {
       key: "size",
@@ -297,13 +635,13 @@ export default function EditPage() {
       key: "frame-time",
       label: "Frame time",
       ok: hasRendered ? stats.frameTimeMs <= FRAME_TIME_BUDGET_MS : null,
-      detail: hasRendered ? `${stats.frameTimeMs.toFixed(1)} ms / ${FRAME_TIME_BUDGET_MS} ms budget` : "確認中…",
+      detail: hasRendered ? `${stats.frameTimeMs.toFixed(1)} ms / ${FRAME_TIME_BUDGET_MS} ms budget` : t.edit.checking,
     },
     {
       key: "no-fragcoord",
       label: "No gl_FragCoord",
       ok: !hasFragCoord,
-      detail: hasFragCoord ? "gl_FragCoord は使えません" : "render(uv, p) only",
+      detail: hasFragCoord ? t.submission.noFragCoord : "render(uv, p) only",
     },
     {
       key: "loops",
@@ -313,6 +651,7 @@ export default function EditPage() {
     },
   ];
   const passedCount = checks.filter((c) => c.ok === true).length;
+  const failedChecks = checks.filter((c) => c.ok === false);
   const allPassed = passedCount === checks.length;
   // 入力直後はプレビューがまだ古いコードの結果なので、反映されるまで投稿させない
   const upToDate = code === compiledSource;
@@ -341,6 +680,12 @@ export default function EditPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  // タイトルはエディタの上と投稿ダイアログのどちらからでも変えられ、下書きと一緒に保存する
+  function updateTitle(title: string) {
+    updateForm("title", title);
+    writeTitle(title);
+  }
+
   async function handlePublish(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
@@ -349,6 +694,7 @@ export default function EditPage() {
       const result = await submitWork({ ...form, source: code });
       if (result.ok) {
         writeDraft(null);
+        writeTitle(null);
         router.push(`/s/${result.slug}`);
         return;
       }
@@ -357,60 +703,124 @@ export default function EditPage() {
         goToLogin();
         return;
       }
-      setSubmitErrors(result.errors);
+      // サーバーが理由を返さなかったときは、ステータスだけでも伝える
+      setSubmitErrors(result.errors.length > 0 ? result.errors : [t.edit.submitFailed(result.status)]);
     } catch {
-      setSubmitErrors(["通信に失敗しました。もう一度お試しください"]);
+      setSubmitErrors([t.edit.networkError]);
     }
     setSubmitting(false);
   }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <Header showSearch={false} showSubmit={false} />
-      <div className="flex flex-1 overflow-hidden">
+      <Header showSearch={false} />
+      <div ref={columnsRef} className="flex flex-1 overflow-hidden">
         {/* 左: コード(編集可能) */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div ref={codeColumnRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-text-primary">{form.title.trim() || "Untitled"}</p>
-              <p className="text-xs tracking-wide text-text-secondary">下書き · このブラウザに自動保存</p>
+              {/* その場で編集できるタイトル。投稿ダイアログのタイトル欄と同じ値 */}
+              <input
+                aria-label={t.edit.titleLabel}
+                value={form.title}
+                onChange={(e) => updateTitle(e.target.value)}
+                placeholder="Untitled"
+                maxLength={TITLE_MAX}
+                className="-mx-1 w-full truncate rounded-control bg-transparent px-1 text-sm font-medium text-text-primary outline-none placeholder:text-text-muted hover:bg-bg-raised focus:bg-bg-raised"
+              />
+              <p className="text-xs tracking-wide text-text-secondary">{t.edit.draftNote}</p>
+            </div>
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-sp-xs"
+                aria-label={t.edit.undo}
+                title={t.edit.undoHint}
+                disabled={!canUndo}
+                onClick={handleUndo}
+              >
+                <UndoIcon />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-sp-xs"
+                aria-label={t.edit.redo}
+                title={t.edit.redoHint}
+                disabled={!canRedo}
+                onClick={handleRedo}
+              >
+                <UndoIcon className="-scale-x-100" />
+              </Button>
             </div>
             <Menu>
-              <MenuTrigger render={<Button variant="secondary" size="sm" />}>プリセット</MenuTrigger>
+              <MenuTrigger render={<Button variant="secondary" size="sm" />}>{t.edit.presetsMenu}</MenuTrigger>
               <MenuContent align="end">
                 {PRESETS.map((preset) => (
                   <MenuItem key={preset.id} onClick={() => applySource(preset.source)}>
-                    {preset.label}
+                    {t.edit.presets[preset.id]}
                   </MenuItem>
                 ))}
               </MenuContent>
             </Menu>
-            {/* フォーマッタは未実装。将来ここにGLSL整形を入れる想定の置き場所 */}
-            <Button variant="secondary" size="sm" disabled>
-              フォーマット
-            </Button>
             <Button variant="ghost" size="sm" onClick={handleReset}>
-              リセット
+              {t.edit.reset}
             </Button>
           </div>
-          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
-            <span className="flex-1">
-              main.glsl
-              {diffCount && (
-                <>
-                  {" · AI の提案を表示中 "}
-                  <span className="text-status-success-solid">+{diffCount.added}</span>{" "}
-                  <span className="text-status-danger-solid">−{diffCount.removed}</span>(未適用)
-                </>
+          {/* ファイル名と render のヒントのバーは置かない(作品は 1 ファイルだけなので)。
+              AI の提案を差分で見せている間だけ、その旨を出す */}
+          {diffCount && (
+            <div className="flex items-center gap-1.5 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
+              {t.edit.showingProposal}
+              <span className="text-status-success-solid">+{diffCount.added}</span>
+              <span className="text-status-danger-solid">−{diffCount.removed}</span>
+              {t.edit.notApplied}
+            </div>
+          )}
+          {diff ? (
+            <CodeDiff lines={diff} />
+          ) : (
+            <ShaderCodeEditor value={code} onChange={setCode} onUndo={handleUndo} onRedo={handleRedo} />
+          )}
+          {aiPanelOpen && (
+            <SplitHandle
+              containerRef={codeColumnRef}
+              orientation="horizontal"
+              label={t.edit.codeAiBoundary}
+              ratio={aiPanelRatio}
+              minStartPx={MIN_CODE_HEIGHT_PX}
+              minEndPx={AI_PANEL_MIN_HEIGHT_PX}
+              onChange={changeAiPanelRatio}
+              onReset={() => changeAiPanelRatio(null)}
+            />
+          )}
+          {/* 閉じている間に未適用の提案があれば、気づけるよう印を付ける */}
+          {!aiPanelOpen && (
+            <Button
+              ref={fabRef}
+              size="icon"
+              className="absolute bottom-6 left-6 z-20 size-12 rounded-full shadow-elevation-2"
+              aria-label={proposal ? t.edit.openAiPending : t.edit.openAi}
+              title={proposal ? t.edit.aiHintPending : t.edit.aiHint}
+              onClick={() => changeAiPanelOpen(true)}
+            >
+              <SparkleIcon className="size-5" />
+              {proposal && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-0.5 -top-0.5 size-3.5 rounded-full bg-status-warning-solid ring-2 ring-bg-base"
+                />
               )}
-            </span>
-            <span>vec4 render(vec2 uv, vec2 p)</span>
-          </div>
-          {diff ? <CodeDiff lines={diff} /> : <ShaderCodeEditor value={code} onChange={setCode} />}
+            </Button>
+          )}
           <AiPanel
+            open={aiPanelOpen}
+            onClose={() => changeAiPanelOpen(false)}
             baseSource={checkedSource}
             pendingTurnId={proposal?.turnId ?? null}
             access={aiAccess}
+            heightRatio={aiPanelRatio}
             onLogin={goToLogin}
             onPropose={handlePropose}
             onApply={handleApplyProposal}
@@ -418,9 +828,33 @@ export default function EditPage() {
           />
         </div>
 
-        {/* 右: ステージ(ライブプレビュー + 審査チェック) */}
-        <div className="flex w-full max-w-[45%] flex-col gap-4 overflow-auto border-l border-border-subtle p-4">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle">
+        <SplitHandle
+          containerRef={columnsRef}
+          label={t.edit.codePreviewBoundary}
+          ratio={previewRatio}
+          minStartPx={MIN_CODE_WIDTH_PX}
+          minEndPx={MIN_PREVIEW_WIDTH_PX}
+          onChange={changePreviewRatio}
+          onReset={() => changePreviewRatio(DEFAULT_PREVIEW_RATIO)}
+        />
+
+        {/* 右: ステージ(ライブプレビュー + 審査チェック)。幅は境界のドラッグで変わる */}
+        <div
+          className="flex shrink-0 flex-col gap-4 overflow-auto p-4"
+          style={{ width: `${previewRatio * 100}%`, minWidth: MIN_PREVIEW_WIDTH_PX }}
+        >
+          {/* 全画面にするのはこの枠。YouTube などと同じく右下のボタン(またはダブルクリック)で
+              切り替える。ボタンはマウスが動いている間だけ出し、2 秒止まったら隠す。
+              全画面の間はカーソルも隠して作品だけを見せる */}
+          <div
+            ref={stageRef}
+            onPointerMove={showStageChrome}
+            onPointerLeave={hideStageChrome}
+            onDoubleClick={toggleFullscreen}
+            className={`relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle [&:fullscreen]:rounded-none [&:fullscreen]:border-0 ${
+              fullscreen.active && pointerIdle ? "cursor-none" : ""
+            }`}
+          >
             <ShaderEditorPreview
               source={proposal?.source ?? compiledSource}
               playing={playing}
@@ -428,57 +862,118 @@ export default function EditPage() {
               resetToken={resetToken}
               onStats={handleStats}
             />
+            {fullscreen.supported && (
+              <button
+                type="button"
+                aria-label={fullscreen.active ? t.edit.exitFullscreen : t.edit.fullscreen}
+                title={t.edit.fullscreenHint(fullscreen.active ? t.edit.exitFullscreen : t.edit.fullscreen)}
+                onClick={toggleFullscreen}
+                onDoubleClick={(e) => e.stopPropagation()}
+                // 作品の上に重ねるので、テーマに関わらず半透明の黒地に白いアイコンにする
+                className={`absolute bottom-3 right-3 z-10 grid size-8 place-items-center rounded-control bg-black/50 text-white transition-opacity hover:bg-black/70 focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white ${
+                  pointerIdle ? "pointer-events-none opacity-0" : "opacity-100"
+                }`}
+              >
+                <FullscreenIcon exit={fullscreen.active} />
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => setPlaying((p) => !p)}>
-              {playing ? "一時停止" : "再生"}
+              {playing ? t.preview.pause : t.preview.play}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setResetToken((t) => t + 1)}>
-              先頭へ
+            <Button variant="ghost" size="sm" onClick={() => setResetToken((n) => n + 1)}>
+              {t.preview.restart}
             </Button>
+            <Menu>
+              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!canExport || gifProgress !== null} />}>
+                {gifProgress === null ? t.edit.exportMenu : t.edit.gifProgress(Math.round(gifProgress * 100))}
+              </MenuTrigger>
+              <MenuContent align="start">
+                <MenuGroup>
+                  <MenuGroupLabel>{t.edit.exportImage}</MenuGroupLabel>
+                  {STILL_SIZES.map((size) => (
+                    <MenuItem key={size.suffix} onClick={() => void exportPng(size)}>
+                      {t.edit.stillSizes[size.suffix]}
+                    </MenuItem>
+                  ))}
+                </MenuGroup>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>{t.edit.exportGif}</MenuGroupLabel>
+                  {GIF_PRESETS.map((preset) => (
+                    <MenuItem key={preset.suffix} onClick={() => void exportGif(preset)}>
+                      {t.edit.gifPresets[preset.suffix]}
+                    </MenuItem>
+                  ))}
+                </MenuGroup>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>{t.edit.exportCode}</MenuGroupLabel>
+                  <MenuItem onClick={exportHtml}>{t.edit.exportHtml}</MenuItem>
+                  <MenuItem onClick={copyForShadertoy}>{t.edit.copyShadertoy}</MenuItem>
+                </MenuGroup>
+                <MenuSeparator />
+                <MenuGroup>
+                  <MenuGroupLabel>{t.edit.exportStage}</MenuGroupLabel>
+                  <MenuItem disabled={!stageUrl} onClick={copyStageUrl}>
+                    {t.work.copyStageUrl}
+                  </MenuItem>
+                  <MenuItem disabled={!stageUrl} onClick={copyEmbed}>
+                    {t.work.copyEmbed}
+                  </MenuItem>
+                </MenuGroup>
+              </MenuContent>
+            </Menu>
             <div className="flex-1" />
             <Badge>{bytes} bytes</Badge>
             <Badge>{stats.fps} fps</Badge>
             <Badge>{stats.elapsed.toFixed(1)} s</Badge>
           </div>
 
-          <div className="rounded-surface border border-border-subtle">
-            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-              <span className="text-sm font-medium text-text-primary">Pre-publish checks</span>
-              <span className={`text-xs ${allPassed ? "text-text-muted" : "text-danger-solid"}`}>
-                {passedCount} / {checks.length} passed
-              </span>
-            </div>
-            <div className="flex flex-col">
-              {checks.map((c) => (
-                <div key={c.key} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                  <span
-                    className={`w-4 shrink-0 text-center ${
-                      c.ok === null ? "text-text-muted" : c.ok ? "text-accent-default" : "text-danger-solid"
-                    }`}
-                  >
-                    {c.ok === null ? "…" : c.ok ? "✓" : "✕"}
-                  </span>
-                  <span className={`flex-1 ${c.ok === false ? "text-danger-solid" : "text-text-primary"}`}>{c.label}</span>
-                  <span className={`font-mono text-xs ${c.ok === false ? "text-danger-solid" : "text-text-muted"}`}>
-                    {c.detail}
-                  </span>
+          {/* 普段は閉じておき、通過数だけ見せる。落ちているチェックは閉じていてもその行だけ出す。
+              見出しを押すと全部開く */}
+          <Accordion
+            className="rounded-surface border border-border-subtle"
+            value={checksOpen ? ["checks"] : []}
+            onValueChange={(value) => setChecksOpen(value.includes("checks"))}
+          >
+            <AccordionItem value="checks" className="border-t-0">
+              <AccordionTrigger className="px-4 py-3">
+                <span className="flex-1">Pre-publish checks</span>
+                <span className={`text-xs font-normal ${allPassed ? "text-text-muted" : "text-danger-solid"}`}>
+                  {passedCount} / {checks.length} passed
+                </span>
+              </AccordionTrigger>
+              {!checksOpen && failedChecks.length > 0 && (
+                <div className="flex flex-col border-t border-border-subtle">
+                  {failedChecks.map((c) => (
+                    <CheckRow key={c.key} check={c} />
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+              <AccordionPanel>
+                <div className="flex flex-col border-t border-border-subtle">
+                  {checks.map((c) => (
+                    <CheckRow key={c.key} check={c} />
+                  ))}
+                </div>
+              </AccordionPanel>
+            </AccordionItem>
+          </Accordion>
+
+          {/* 投稿はチェックのすぐ下に置く(画面下の全幅バーはやめ、左はコードと AI、右は確認と投稿に分ける) */}
+          <div className="flex items-center justify-end gap-4">
+            {proposal && <span className="flex-1 text-xs text-text-muted">{t.edit.resolveProposal}</span>}
+            {!proposal && authReady && !loggedIn && (
+              <span className="flex-1 text-xs text-text-muted">{t.edit.loginToPost}</span>
+            )}
+            <Button variant="primary" size="md" disabled={!canProceed} onClick={handleProceed}>
+              {loggedIn || !authReady ? t.edit.proceed : t.edit.loginAndPost}
+            </Button>
           </div>
         </div>
-      </div>
-
-      <div className="flex items-center justify-end gap-4 border-t border-border-subtle bg-bg-base px-8 py-4">
-        {proposal && <span className="text-xs text-text-muted">AI の提案を適用するか却下すると投稿できます</span>}
-        {!proposal && authReady && !loggedIn && (
-          <span className="text-xs text-text-muted">投稿にはログインが必要です(下書きは残ります)</span>
-        )}
-        <Button variant="primary" size="md" disabled={!canProceed} onClick={handleProceed}>
-          {loggedIn || !authReady ? "Submitへ進む" : "ログインして投稿"}
-        </Button>
       </div>
 
       <Dialog
@@ -488,23 +983,21 @@ export default function EditPage() {
         }}
       >
         <DialogContent className="w-full max-w-md">
-          <DialogTitle>作品を登録する</DialogTitle>
+          <DialogTitle>{t.edit.dialog.title}</DialogTitle>
           <DialogDescription>
-            {form.visibility === "public"
-              ? "作品ページは誰でも閲覧でき、Gallery に表示されます。"
-              : "作品ページは投稿者本人だけが閲覧できます。Gallery にも表示されません。"}
+            {form.visibility === "public" ? t.edit.dialog.publicNote : t.edit.dialog.privateNote}
           </DialogDescription>
           <form onSubmit={handlePublish} className="mt-4 flex flex-col gap-3">
-            <Field label="タイトル" htmlFor="submit-title">
+            <Field label={t.edit.dialog.titleField} htmlFor="submit-title">
               <Input
                 id="submit-title"
                 required
                 maxLength={TITLE_MAX}
                 value={form.title}
-                onChange={(e) => updateForm("title", e.target.value)}
+                onChange={(e) => updateTitle(e.target.value)}
               />
             </Field>
-            <Field label="名前(表示用・任意)" htmlFor="submit-author">
+            <Field label={t.edit.dialog.authorField} htmlFor="submit-author">
               <Input
                 id="submit-author"
                 placeholder="Anonymous"
@@ -513,27 +1006,42 @@ export default function EditPage() {
                 onChange={(e) => updateForm("author", e.target.value)}
               />
             </Field>
-            <Field label="ライセンス" htmlFor="submit-license">
-              <Select
-                value={form.license}
-                onValueChange={(value) => {
-                  if (typeof value === "string") updateForm("license", value);
-                }}
-              >
-                <SelectTrigger id="submit-license">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LICENSES.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
             <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-sm font-medium text-text-primary">公開範囲</legend>
+              <legend className="mb-1 flex w-full items-baseline text-sm font-medium text-text-primary">
+                <span className="flex-1">{t.edit.dialog.reuseLegend}</span>
+                {/* ダイアログを閉じずに読めるよう別のタブで開く(下書きは残る) */}
+                <a
+                  href="/terms#license"
+                  target="_blank"
+                  rel="noopener"
+                  className="text-xs font-normal text-text-secondary underline underline-offset-2 hover:text-text-primary"
+                >
+                  {t.edit.dialog.aboutLicenses}
+                </a>
+              </legend>
+              {LICENSE_CHOICES.map((choice) => (
+                <label
+                  key={choice}
+                  className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3"
+                >
+                  <input
+                    className="mt-1 accent-accent-default"
+                    type="radio"
+                    name="license"
+                    value={choice}
+                    checked={form.license === choice}
+                    onChange={() => updateForm("license", choice)}
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-sm text-text-primary">{t.edit.licenseChoices[choice].title}</span>
+                    <span className="text-xs text-text-muted">{t.edit.licenseChoices[choice].description}</span>
+                    <span className="font-mono text-[11px] text-text-muted">{t.license[choice].label}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 text-sm font-medium text-text-primary">{t.edit.dialog.visibilityLegend}</legend>
               <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
                 <input
                   className="mt-1 accent-accent-default"
@@ -544,8 +1052,8 @@ export default function EditPage() {
                   onChange={() => updateForm("visibility", "public")}
                 />
                 <span className="flex flex-col gap-0.5">
-                  <span className="text-sm text-text-primary">公開</span>
-                  <span className="text-xs text-text-muted">作品ページが Gallery に表示され、誰でも閲覧できます</span>
+                  <span className="text-sm text-text-primary">{t.edit.dialog.public}</span>
+                  <span className="text-xs text-text-muted">{t.edit.dialog.publicHint}</span>
                 </span>
               </label>
               <label className="flex cursor-pointer items-start gap-3 rounded-control border border-border-subtle p-3">
@@ -558,12 +1066,12 @@ export default function EditPage() {
                   onChange={() => updateForm("visibility", "private")}
                 />
                 <span className="flex flex-col gap-0.5">
-                  <span className="text-sm text-text-primary">非公開</span>
-                  <span className="text-xs text-text-muted">投稿者本人だけが閲覧できます</span>
+                  <span className="text-sm text-text-primary">{t.edit.dialog.private}</span>
+                  <span className="text-xs text-text-muted">{t.edit.dialog.privateHint}</span>
                 </span>
               </label>
             </fieldset>
-            <Field label="タグ(カンマ区切り・任意)" htmlFor="submit-tags">
+            <Field label={t.edit.dialog.tagsField} htmlFor="submit-tags">
               <Input
                 id="submit-tags"
                 placeholder="noise, warp"
@@ -571,7 +1079,7 @@ export default function EditPage() {
                 onChange={(e) => updateForm("tags", e.target.value)}
               />
             </Field>
-            <Field label="説明(任意)" htmlFor="submit-description">
+            <Field label={t.edit.dialog.descriptionField} htmlFor="submit-description">
               <Textarea
                 id="submit-description"
                 rows={3}
@@ -589,15 +1097,74 @@ export default function EditPage() {
             )}
             <div className="mt-2 flex justify-end gap-2">
               <DialogClose render={<Button type="button" variant="ghost" size="sm" disabled={submitting} />}>
-                キャンセル
+                {t.edit.dialog.cancel}
               </DialogClose>
               <Button type="submit" variant="primary" size="sm" disabled={submitting}>
-                {submitting ? "登録中…" : form.visibility === "public" ? "公開する" : "非公開で登録"}
+                {submitting ? t.edit.dialog.submitting : form.visibility === "public" ? t.edit.dialog.publish : t.edit.dialog.savePrivate}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** 書き出しの失敗の理由(lib/renderStill の RenderError)を、画面の言語の文にする。理由が分からなければ出さない */
+function renderErrorMessage(error: unknown, t: Dictionary): string | undefined {
+  if (!(error instanceof RenderError)) return undefined;
+  switch (error.reason) {
+    case "too-large":
+      return t.edit.renderError.tooLarge(error.detail);
+    case "compile":
+      return t.edit.renderError.compile(error.detail);
+    case "no-image":
+      return t.edit.renderError.noImage;
+  }
+}
+
+// 全画面に入る(四隅が外向き)/ 抜ける(四隅が内向き)。色は文字色に従う
+function FullscreenIcon({ exit }: { exit: boolean }) {
+  const d = exit
+    ? "M6 2.5v3.5H2.5M10 2.5v3.5h3.5M6 13.5V10H2.5M10 13.5V10h3.5"
+    : "M2.5 6V2.5H6M13.5 6V2.5H10M2.5 10v3.5H6M13.5 10v3.5H10";
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="size-4">
+      <path d={d} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ↶(左右反転すると ↷ になる)。色は文字色に従う
+function UndoIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className={`size-4 ${className ?? ""}`}>
+      <path
+        d="M6 3.5 3 6.5l3 3M3 6.5h6.5a3.5 3.5 0 0 1 0 7H8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+type PrePublishCheck = { key: string; label: string; ok: boolean | null; detail: string };
+
+function CheckRow({ check }: { check: PrePublishCheck }) {
+  const failed = check.ok === false;
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 text-sm">
+      <span
+        className={`w-4 shrink-0 text-center ${
+          check.ok === null ? "text-text-muted" : check.ok ? "text-accent-default" : "text-danger-solid"
+        }`}
+      >
+        {check.ok === null ? "…" : check.ok ? "✓" : "✕"}
+      </span>
+      <span className={`flex-1 ${failed ? "text-danger-solid" : "text-text-primary"}`}>{check.label}</span>
+      <span className={`font-mono text-xs ${failed ? "text-danger-solid" : "text-text-muted"}`}>{check.detail}</span>
     </div>
   );
 }

@@ -1,32 +1,46 @@
+"use client";
+
 import Link from "next/link";
-import { Card } from "@frost-ui/react/molecules/card";
+import { Badge } from "@frost-ui/react/atoms/badge";
+import { FavoriteButton, FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderThumbnail } from "@/components/ShaderThumbnail";
+import { useI18n } from "@/lib/i18n/client";
+import { formatRelativeTime } from "@/lib/relativeTime";
+import { useNow } from "@/lib/useNow";
 import type { WorkSummary } from "@/lib/works";
 
-// 仕様: Figma "Home / Desktop 1440" > ShaderCard(node 8:20 ほか)
-// サムネ 16:10 相当 + 2 行のキャプション(タイトル…bytes / 作者・年…ライセンス)
+// 仕様: Figma「Home 一覧の見せ方」案 A+B ① の New と、「すべて見る」(/works)のカード。
+// 枠は付けず、サムネ 16:10 + 2 行(タイトル…bytes / 作者 · 12 分前…お気に入りの数)。
+// 非公開の作品は「自分の作品」(/me)にだけ並ぶので、そこで見分けられるよう印を付ける
+// お気に入りの ♡ はサムネの右上に重ねる。リンクの中にボタンを入れられないので、リンクと並べて置く
 export function WorkCard({ work }: { work: WorkSummary }) {
-  const year = work.createdAt.slice(0, 4);
-  const license = work.license.replace(/-\d.*$/, ""); // "CC0-1.0" → "CC0"
+  const now = useNow();
+  const { t } = useI18n();
+  const when = now === null ? work.createdAt.slice(0, 4) : formatRelativeTime(work.createdAt, now, t.time);
 
   return (
-    <Link href={`/s/${work.slug}/`}>
-      <Card className="overflow-hidden rounded-surface border-border-subtle p-0 transition-colors hover:border-border-default">
-        <div className="relative aspect-[221/120] w-full">
+    <div className="group relative">
+      <Link href={`/s/${work.slug}/`} className="flex flex-col gap-2.5">
+        <div className="relative aspect-[16/10] overflow-hidden rounded-[10px]">
           <ShaderThumbnail source={work.source} thumbnail={work.thumbnail} alt={work.title} />
         </div>
-        <div className="flex flex-col gap-1.5 p-sp-md">
+        <div className="flex flex-col gap-1">
           <div className="flex items-baseline gap-sp-sm">
-            <h2 className="flex-1 text-sm font-medium text-text-primary">{work.title}</h2>
+            <h2 className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary transition-colors group-hover:text-accent-default">
+              {work.title}
+            </h2>
+            {work.visibility === "private" && <Badge>{t.common.private}</Badge>}
             <span className="font-mono text-xs text-text-muted">{work.bytes} B</span>
           </div>
-          <div className="flex items-baseline gap-1 text-xs">
-            <span className="text-text-secondary">{work.author}</span>
-            <span className="flex-1 text-text-muted">· {year}</span>
-            <span className="font-mono text-text-muted">{license}</span>
+          <div className="flex items-baseline gap-sp-sm text-xs">
+            <span className="min-w-0 flex-1 truncate text-text-secondary">
+              {work.author} · {when}
+            </span>
+            <FavoriteCount work={work} className="text-text-muted" />
           </div>
         </div>
-      </Card>
-    </Link>
+      </Link>
+      <FavoriteButton work={work} variant="overlay" />
+    </div>
   );
 }

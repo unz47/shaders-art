@@ -16,6 +16,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@anthropic-ai/aws-sdk": "0.7.7",
     "@anthropic-ai/bedrock-sdk": "^0.35.0",
     "@anthropic-ai/sdk": "^0.135.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1152.0",
@@ -24,6 +25,7 @@
     "@frost-ui/react": "^0.1.0",
     "@frost-ui/tokens": "^0.1.0",
     "aws-jwt-verify": "^5.2.1",
+    "gifenc": "1.0.3",
     "next": "^16.2.9",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

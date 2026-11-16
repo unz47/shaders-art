@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { buildFragmentShader, VERTEX_SHADER } from "@/lib/glsl";
+import { buildFragmentShader, formatShaderLog, VERTEX_SHADER } from "@/lib/glsl";
+import { useI18n } from "@/lib/i18n/client";
 
 export interface ShaderEditorStats {
   fps: number;
@@ -22,13 +23,22 @@ export function ShaderEditorPreview({
   attention,
   resetToken,
   onStats,
+  speed = 1,
 }: {
   source: string;
   playing: boolean;
   attention: number;
   resetToken: number;
   onStats: (stats: ShaderEditorStats) => void;
+  /** 再生速度の倍率(配信背景の /stage で ?speed= から渡す) */
+  speed?: number;
 }) {
+  const { t } = useI18n();
+  // ログが空のときの文言。描画のエフェクトは source が変わったときだけやり直すので、言語は ref で渡す
+  const compileFailedRef = useRef(t.preview.compileFailed);
+  useEffect(() => {
+    compileFailedRef.current = t.preview.compileFailed;
+  }, [t]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +51,11 @@ export function ShaderEditorPreview({
   useEffect(() => {
     attentionRef.current = attention;
   }, [attention]);
+
+  const speedRef = useRef(speed);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   const onStatsRef = useRef(onStats);
   useEffect(() => {
@@ -68,11 +83,15 @@ export function ShaderEditorPreview({
 
     let errored = false;
     let errorMessage: string | null = null;
-    // 実際のGLSLコンパイラのエラーログ(行番号つき)をそのまま使う
+    // 実際のGLSLコンパイラのエラーログを使う。行番号は、前に足した行(uniform の宣言など)を除いた
+    // 作品のコードの中での行番号に直す(コード欄の行番号と合うように)
     renderer.debug.onShaderError = (gl, _program, glVertexShader, glFragmentShader) => {
       errored = true;
-      const log = gl.getShaderInfoLog(glFragmentShader) || gl.getShaderInfoLog(glVertexShader) || "";
-      errorMessage = log.trim() || "コンパイルに失敗しました";
+      const fragmentLog = gl.getShaderInfoLog(glFragmentShader);
+      const log = fragmentLog
+        ? formatShaderLog(fragmentLog, gl.getShaderSource(glFragmentShader))
+        : gl.getShaderInfoLog(glVertexShader) || "";
+      errorMessage = log.trim() || compileFailedRef.current;
       console.error(log);
     };
 
@@ -99,6 +118,9 @@ export function ShaderEditorPreview({
       if (w === 0 || h === 0) return;
       renderer.setSize(w, h, false);
       uniforms.resolution.value.set(w, h);
+      // サイズを変えると canvas の中身が消える。次のフレームを待つと消えた状態が一瞬見えて
+      // 点滅するので(Pre-publish checks の開閉アニメーション中など)、その場で描き直す
+      if (!errored) renderer.render(scene, camera);
     }
     resize();
     const ro = new ResizeObserver(resize);
@@ -140,7 +162,7 @@ export function ShaderEditorPreview({
       // 報告することで、エラーが発生したtickでも正しい状態が伝わるようにする。
       if (!errored) {
         if (playingRef.current) {
-          elapsedRef.current += dt;
+          elapsedRef.current += dt * speedRef.current;
         }
         uniforms.time.value = elapsedRef.current;
         uniforms.attention.value = attentionRef.current;
@@ -180,6 +202,9 @@ export function ShaderEditorPreview({
       material.dispose();
       quad.geometry.dispose();
       renderer.dispose();
+      // WebGL のコンテキストは GC まで残り、ブラウザが同時に持てる数(16 ほど)を食う。コードを変えるたびに
+      // 作り直す /edit や、プレビューが 10 個ほど並ぶ学習のページで上限に当たらないよう、すぐに手放す
+      renderer.forceContextLoss();
       container.removeChild(renderer.domElement);
     };
   }, [source]);
@@ -189,7 +214,7 @@ export function ShaderEditorPreview({
       <div ref={containerRef} className="h-full w-full [&>canvas]:h-full [&>canvas]:w-full" />
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-base p-6 text-center">
-          <p className="text-sm font-medium text-danger-solid">コンパイルエラー</p>
+          <p className="text-sm font-medium text-danger-solid">{t.preview.compileError}</p>
           <p className="max-w-full whitespace-pre-wrap font-mono text-xs text-text-primary">{error}</p>
         </div>
       )}

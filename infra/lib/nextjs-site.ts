@@ -4,8 +4,10 @@ import { Duration, Stack } from "aws-cdk-lib";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Nextjs } from "cdk-nextjs-standalone";
 import { Construct } from "constructs";
+import { AI_MODELS } from "../../src/lib/aiModels.ts";
 import type { Auth } from "./auth.ts";
 
 export interface NextjsSiteProps {
@@ -17,13 +19,21 @@ export interface NextjsSiteProps {
   auth: Auth;
   /** 本番サイトのオリジン。決まっていれば OAuth の redirect_uri に使う(Auth の siteUrl と同じ値) */
   siteUrl?: string;
+  /** Claude Platform on AWS のワークスペース ID(wrkspc_…、東京に作ったもの)。無ければ Claude は選べない */
+  claudeWorkspaceId?: string;
+  /** AI を上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する(src/lib/server/aiUsage) */
+  aiUnlimitedEmails?: string;
 }
 
-// AI と作る で使う Bedrock のモデル。リージョンは Lambda と同じ東京。
-// このアカウントでは Bedrock の Claude が使えない制限があるので(解除は AWS サポートに依頼する)、
-// いまはその場で使えて、コードに強い Qwen3 Coder にしている。Claude に戻すときは anthropic.* の ID にする
-// (東京のマントルにある Claude は Opus 4.8 / 4.7 / Haiku 4.5 まで。呼び方の違いは src/lib/server/ai.ts)。
+// AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
+// 利用者が選べるモデルは src/lib/aiModels.ts の一覧で、Lambda にはその全部の呼び出しを許す。
+// このアカウントでは Bedrock の Claude に制限があり(Messages API の bedrock-mantle は全部 403、InvokeModel で
+// 使えるのは Sonnet 4.6 と Haiku 4.5 だけ。解除は AWS サポートに依頼する)、いまはコードに強い Qwen3 Coder にしている。
+// 呼び方の違いは src/lib/server/ai.ts。
 const AI_MODEL = "qwen.qwen3-coder-480b-a35b-v1:0";
+
+// 日本国内で処理する推論プロファイル(jp.)の行き先。プロファイルを通すと、このどちらかで推論する
+const JP_PROFILE_REGIONS = ["ap-northeast-1", "ap-northeast-3"];
 
 // SSR(OpenNext)でNext.jsアプリ全体(ページ+API)をデプロイする。
 // cdk-nextjs-standaloneのNextjsコンストラクトが、S3(静的アセット)+
@@ -34,7 +44,11 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails } = props;
+
+    // SSR Lambda のログ(アクセス解析の "pv" と、AI の原価の "ai-edit" を含む)は 13 か月残す(前年の同じ月と比べられるように)。
+    // 指定しないと Lambda が自動で作るロググループは無期限になる。変えたら利用規約の「利用状況の記録」も直すこと
+    const serverLogs = new LogGroup(this, "ServerLogs", { retention: RetentionDays.THIRTEEN_MONTHS });
 
     const dirname = path.dirname(fileURLToPath(import.meta.url));
     this.nextjs = new Nextjs(this, "Nextjs", {
@@ -62,12 +76,17 @@ export class NextjsSite extends Construct {
         COGNITO_DOMAIN: auth.domainUrl,
         ...(siteUrl ? { SITE_URL: siteUrl } : {}),
         AI_MODEL,
+        ...(claudeWorkspaceId ? { ANTHROPIC_AWS_WORKSPACE_ID: claudeWorkspaceId } : {}),
+        // AI の上限は既定(1 人あたり月 40 クレジット・1 日 20 回、無料の人全体で月 ¥3,000)のまま。
+        // 変えるなら AI_MONTHLY_CREDITS / AI_DAILY_REQUESTS / AI_FREE_MONTHLY_BUDGET_YEN
+        ...(aiUnlimitedEmails ? { AI_UNLIMITED_EMAILS: aiUnlimitedEmails } : {}),
       },
       overrides: {
         nextjsServer: {
           functionProps: {
             // 既定の 10 秒では AI の返答(考える時間を含む)が間に合わない
             timeout: Duration.minutes(2),
+            logGroup: serverLogs,
           },
         },
         nextjsDistribution: {
@@ -87,21 +106,52 @@ export class NextjsSite extends Construct {
       },
     });
 
-    // SSR Lambda(Route Handler)から作品を読む + 投稿(PutItem)だけ書ける。
-    // 更新・削除はまだ API が無いので権限も渡さない。
+    // SSR Lambda(Route Handler)から作品を読む + 投稿(PutItem)とお気に入りを書ける。
+    // お気に入りは、同じ表のお気に入りの行の追加・削除(PutItem・DeleteItem)と、作品の行の
+    // favoriteCount の増減(UpdateItem)を 1 つのトランザクションで行う(src/lib/server/favorites.ts)。
+    // 作品の更新・削除の API はまだ無い。
     const fn = this.nextjs.serverFunction.lambdaFunction;
     table.grantReadData(fn);
-    table.grant(fn, "dynamodb:PutItem");
+    table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem");
 
-    // AI と作る: Claude は Messages API(bedrock-mantle)、それ以外は Converse API(bedrock-runtime)で呼ぶ。
+    // AI と作る: anthropic.* の Claude は Messages API(bedrock-mantle)、jp.anthropic.* の Claude は InvokeModel、
+    // それ以外は Converse API(どちらも bedrock-runtime)で呼ぶ。
     if (AI_MODEL.startsWith("anthropic.")) {
       // CreateInference をどのリソースで絞れるかは AWS のドキュメント間で食い違っているので、アクションだけに絞る
       fn.addToRolePolicy(new PolicyStatement({ actions: ["bedrock-mantle:CreateInference"], resources: ["*"] }));
-    } else {
+    }
+    // 利用者が選べるモデル(と既定のモデル)だけを呼べるようにする
+    const converseModels = [
+      ...new Set([AI_MODEL, ...AI_MODELS.filter((model) => model.via === "bedrock").map((model) => model.id)]),
+    ].filter((id) => !id.startsWith("anthropic."));
+    fn.addToRolePolicy(
+      new PolicyStatement({
+        actions: ["bedrock:InvokeModelWithResponseStream"],
+        resources: converseModels.map((id) => `arn:aws:bedrock:${Stack.of(this).region}::foundation-model/${id}`),
+      }),
+    );
+    // Claude(Bedrock の InvokeModel)は推論プロファイル(jp.)を通して呼ぶので、プロファイルと、
+    // その行き先の各リージョンの基盤モデルの両方に許可が要る
+    const profileModels = AI_MODELS.filter((model) => model.via === "bedrock-claude").map((model) => model.id);
+    if (profileModels.length > 0) {
+      const { region, account } = Stack.of(this);
       fn.addToRolePolicy(
         new PolicyStatement({
           actions: ["bedrock:InvokeModelWithResponseStream"],
-          resources: [`arn:aws:bedrock:${Stack.of(this).region}::foundation-model/${AI_MODEL}`],
+          resources: profileModels.flatMap((id) => [
+            `arn:aws:bedrock:${region}:${account}:inference-profile/${id}`,
+            ...JP_PROFILE_REGIONS.map((r) => `arn:aws:bedrock:${r}::foundation-model/${id.replace(/^jp\./, "")}`),
+          ]),
+        }),
+      );
+    }
+    // Claude(Claude Platform on AWS)は、設定したワークスペースでの推論だけを許す
+    if (claudeWorkspaceId) {
+      const { region, account } = Stack.of(this);
+      fn.addToRolePolicy(
+        new PolicyStatement({
+          actions: ["aws-external-anthropic:CreateInference"],
+          resources: [`arn:aws:aws-external-anthropic:${region}:${account}:workspace/${claudeWorkspaceId}`],
         }),
       );
     }

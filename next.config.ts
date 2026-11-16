@@ -9,9 +9,22 @@ const LINKED_DESIGN_SYSTEM = true;
 const nextConfig: NextConfig = {
   // OpenNext(Lambda)がこの形式のビルド出力を前提にしている
   output: "standalone",
+  // 開発中だけ出る Next.js の表示。既定の左下は /edit の AI 欄の開くボタン(FAB)とモデル選択に重なるので右下にする
+  devIndicators: { position: "bottom-right" },
   // @frost-ui/react は TS ソース配布なので消費側でトランスパイルする
   transpilePackages: ["@frost-ui/react"],
   ...(LINKED_DESIGN_SYSTEM ? { turbopack: { root: path.resolve(__dirname, "..") } } : {}),
+  async headers() {
+    return [
+      {
+        // /stage は配信背景や他のサイトへの埋め込み用なので、どこからでも iframe で表示できるようにする。
+        // CloudFront(cdk-nextjs-standalone)が付ける X-Frame-Options: SAMEORIGIN より、
+        // CSP の frame-ancestors のほうがブラウザで優先される
+        source: "/stage/:path*",
+        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
