@@ -192,8 +192,8 @@ Cognito の確認メールは既定の送信元(1 日 50 通まで)で送って�
    `ShadersArtStack` が CloudFront に別名と証明書を付け、A / AAAA レコードを書き込む
 
 証明書の検証は、ホストゾーンが引けるようになってから数分かかる(その間 `cdk deploy` は待つ)。
-ホストゾーンを引く(`HostedZone.fromLookup`)ので、デプロイには AWS の認証情報が要る。引いた結果は `infra/cdk.context.json` に残る
-(コミットしておくと、GitHub Actions のデプロイで引き直さずに済む)。
+ホストゾーンを引く(`HostedZone.fromLookup`)ので、デプロイには AWS の認証情報が要る。引いた結果は `infra/cdk.context.json` に残るが、
+AWS のアカウント ID が入るのでコミットしない(`.gitignore`。GitHub Actions のデプロイはそのつど引き直す)。
 
 ### GitHub Actions からデプロイする(初回の準備)
 
