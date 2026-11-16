@@ -6,7 +6,7 @@
   },
   "context": {
     "siteUrl": "",
-    "domainName": "shaders.art",
+    "domainName": "shaders-art.com",
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],

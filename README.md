@@ -182,11 +182,11 @@ CloudFront のドメインは作り直さない限り変わらない。独自ド
 
 Cognito の確認メールは既定の送信元(1 日 50 通まで)で送っている。利用者が増えたら SES に切り替える。
 
-### 独自ドメイン(shaders.art)
+### 独自ドメイン(shaders-art.com)
 
 1. ドメインを買い、Route 53 にホストゾーンを用意する。Route 53 で買えばホストゾーンは自動で作られる。
    ほかで買ったときは Route 53 にホストゾーンを作り、そのネームサーバー(NS)を買った先に登録する
-2. `infra/cdk.json` の `context.domainName` にドメインを書く(`shaders.art`。`https://` は付けない)。
+2. `infra/cdk.json` の `context.domainName` にドメインを書く(`shaders-art.com`。`https://` は付けない)。
    `siteUrl` は空のままでよい(空なら `https://<domainName>` になる)
 3. `cdk deploy --all` する。`ShadersArtWafStack`(us-east-1)が証明書を作って DNS で検証し、
    `ShadersArtStack` が CloudFront に別名と証明書を付け、A / AAAA レコードを書き込む
