@@ -9,7 +9,7 @@ import { PrivacyJa } from "./PrivacyJa";
 // /privacy … プライバシーポリシー。何を集め、何に使い、どこに送り、いつ消すかを、コードのとおりに書く
 // (根拠のコードは各文書の冒頭のコメント)。集めるものや送り先を変えたら、ここも直すこと。
 // 利用規約(/terms)と同じく、日本語版(PrivacyJa)が正文で、英語版(PrivacyEn)はその翻訳。
-// [運営者の氏名]・[連絡先] は公開前に運営者が埋める。本番で公開する前に専門家に確認してもらうこと。
+// 本番で公開する前に専門家に確認してもらうこと。
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
   return { title: locale === "ja" ? "プライバシーポリシー — shaders.art" : "Privacy Policy — shaders.art" };

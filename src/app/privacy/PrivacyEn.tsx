@@ -23,8 +23,8 @@ export function PrivacyEn() {
 
       <Section title="1. Operator">
         <List>
-          <li>Operator: [operator name]</li>
-          <li>Contact: [contact]</li>
+          <li>Operator: unz47</li>
+          <li>Contact: chipandquu0403@icloud.com</li>
           <li>The operator’s address will be provided without delay on request.</li>
         </List>
       </Section>
@@ -286,12 +286,12 @@ export function PrivacyEn() {
         <H3>8.2 Requests to the operator</H3>
         <P>
           Editing a posted work, deleting your account, and changing your email address cannot yet be done on the
-          Service. Please send a request to [contact].
+          Service. Please send a request to chipandquu0403@icloud.com.
         </P>
         <P>
           You can also ask the operator, regarding your information that the operator holds, to notify you of the
           purposes of use, to disclose it (including records of provision to third parties), to correct, add to, or delete it, to stop
-          using or erase it, or to stop providing it to third parties. Please send requests to [contact].
+          using or erase it, or to stop providing it to third parties. Please send requests to chipandquu0403@icloud.com.
         </P>
         <List>
           <li>We confirm your identity using the email address registered to your account.</li>
@@ -305,7 +305,7 @@ export function PrivacyEn() {
             6 has passed, even after your account is deleted.
           </li>
         </List>
-        <P>Questions and complaints about this Policy are also accepted at [contact].</P>
+        <P>Questions and complaints about this Policy are also accepted at chipandquu0403@icloud.com.</P>
       </Section>
 
       <Section title="9. Changes to this Policy">
