@@ -1,10 +1,10 @@
 import { findLicense, type LicenseId, licenseUrl } from "@/lib/submission";
-import { ExternalLink, H3, List, P, Section } from "./parts";
+import { ExternalLink, H3, InternalLink, List, P, Section } from "./parts";
 
 // 利用規約の英語版。日本語版(TermsJa)の翻訳で、食い違うときは日本語版が優先する(冒頭にもそう書く)。
 // 日本語版を変えたら、こちらも合わせて変えること。
 
-const UPDATED = "November 3, 2026";
+const UPDATED = "November 15, 2026";
 
 /** クリエイティブ・コモンズの説明ページ(英語) */
 const cc = (id: LicenseId) => licenseUrl(findLicense(id)!, "en");
@@ -131,7 +131,8 @@ export function TermsEn() {
           <li>AI suggestions may contain mistakes. You decide whether to apply a suggestion.</li>
           <li>
             Your requests and the work’s code are sent to the AI provider (such as Amazon Web Services) to create
-            suggestions.
+            suggestions. The <InternalLink href="/privacy#processors">Privacy Policy</InternalLink> lists where they are
+            sent.
           </li>
         </List>
       </Section>
@@ -156,6 +157,10 @@ export function TermsEn() {
           These records do not use cookies. If your browser is set not to be tracked (Global Privacy Control or Do Not
           Track), page records are not sent. Only the operator uses these records; they are not used for advertising
           or provided to third parties. Records are deleted after about 13 months.
+        </P>
+        <P>
+          How personal information is handled (what is collected, why, and how to ask for disclosure or deletion) is
+          described in the <InternalLink href="/privacy">Privacy Policy</InternalLink>.
         </P>
       </Section>
 

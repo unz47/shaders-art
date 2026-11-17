@@ -1,5 +1,6 @@
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { isPublicWork } from "@/lib/moderation";
 import type { Work } from "@/lib/works";
 import { db, isWorkItem, scanAllItems, tableName } from "./db";
 
@@ -29,9 +30,9 @@ function isFavoriteRow(item: Record<string, unknown>): item is Record<string, un
 /** 作品が無い・その人には見えない(他人の非公開作品)ときは null */
 export type FavoriteResult = { favorited: boolean; favoriteCount: number } | null;
 
-// お気に入りにできる作品: 作品の行で、公開か、その人自身の作品
+// お気に入りにできる作品: 作品の行で、公開(運営・通報で非公開にされていない)か、その人自身の作品
 const VISIBLE_WORK =
-  "attribute_exists(slug) AND attribute_not_exists(kind) AND (attribute_not_exists(visibility) OR visibility = :public OR authorId = :me)";
+  "attribute_exists(slug) AND attribute_not_exists(kind) AND (((attribute_not_exists(visibility) OR visibility = :public) AND attribute_not_exists(hiddenBy)) OR authorId = :me)";
 
 async function favoriteCountOf(slug: string): Promise<number> {
   const { Item } = await db.send(
@@ -132,6 +133,6 @@ export async function listFavoriteWorks(userId: string): Promise<Work[]> {
     .filter((work): work is Work => {
       if (!work) return false;
       const owner = (work as Work & { authorId?: string }).authorId;
-      return work.visibility === undefined || work.visibility === "public" || owner === userId;
+      return isPublicWork(work) || owner === userId;
     });
 }

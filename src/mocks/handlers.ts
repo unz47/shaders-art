@@ -4,6 +4,7 @@ import { favoriteHandlers } from "./works/favorites";
 import { getHome } from "./works/home";
 import { listWorks } from "./works/list";
 import { listMyWorks } from "./works/mine";
+import { moderationHandlers } from "./works/moderation";
 
 // 偽のサーバー。ここに追加していく
-export const handlers = [listWorks, listMyWorks, getHome, ...favoriteHandlers, getWork, aiEdit, aiModels, aiUsage];
+export const handlers = [listWorks, listMyWorks, getHome, ...favoriteHandlers, getWork, ...moderationHandlers, aiEdit, aiModels, aiUsage];

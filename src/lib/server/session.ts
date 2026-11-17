@@ -23,6 +23,8 @@ export interface Session {
   /** Cognito のユーザー ID。投稿の持ち主として保存する */
   sub: string;
   email: string | null;
+  /** メールアドレスが確認済みか。運営や上限なしの判定では、確認済みのアドレスだけを信じる(lib/moderation の isAdmin) */
+  emailVerified: boolean;
 }
 
 type CookieJar = Awaited<ReturnType<typeof cookies>>;
@@ -40,7 +42,12 @@ let cachedVerifier: ReturnType<typeof createVerifier> | undefined;
 export async function verifyIdToken(cfg: AuthConfig, token: string): Promise<Session> {
   cachedVerifier ??= createVerifier(cfg);
   const payload = await cachedVerifier.verify(token);
-  return { sub: payload.sub, email: typeof payload.email === "string" ? payload.email : null };
+  return {
+    sub: payload.sub,
+    email: typeof payload.email === "string" ? payload.email : null,
+    // Cognito は真偽値で入れるが、IdP によっては文字列の "true" になる
+    emailVerified: String(payload.email_verified) === "true",
+  };
 }
 
 export function setSessionCookies(jar: Pick<CookieJar, "set">, tokens: TokenResponse): void {

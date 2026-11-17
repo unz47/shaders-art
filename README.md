@@ -139,7 +139,22 @@ filter msg = "ai-blocked"
 - playground の「/edit で開く」は、コードを `/edit#src=…`(`/stage` と同じ圧縮)で渡す。`/edit` はそれを開き、
   それまでの下書きは「元に戻す」で戻せる
 
+### 通報・非公開・削除
+
+- 作者は作品ページの「管理」から、公開・非公開の切り替えと削除ができる。削除すると、その作品へのお気に入りと通報も消える
+- ログインした人は、ほかの人の公開作品を「通報」できる(理由を選び、説明は任意。1 人 1 作品につき 1 回)。
+  別々の人からの通報が 3 件(`REPORT_AUTO_HIDE_THRESHOLD`)に達すると、運営が見るまで自動で非公開になる
+- 運営は `/admin` で、通報のあった作品と非公開にした作品を見て、非公開にする・問題なしとして戻す(通報を片付ける)。
+  作品ページの「管理」からはどの作品でも消せる。運営かどうかは `ADMIN_EMAILS`(カンマ区切り)で決め、
+  **確認済みの**メールアドレスだけを信じる(Cognito では未確認のまま別のアドレスに変えられるため。`AI_UNLIMITED_EMAILS` も同じ)
+- 非公開(作者が非公開にした・運営や通報で非公開になった)の作品は、作者と運営にしか見えない。一覧・検索・お気に入り・
+  `/stage` の slug の URL からも外れる
+- 本番では `pnpm cdk deploy --all -c adminEmails=you@example.com` で渡す。ローカルでは `.env.local` に `ADMIN_EMAILS`
+- 通報は作品と同じ表に `report#<作品の slug>#<ユーザー ID>` の行として入る。作品の行の `reportCount` が通報した人の数
+
 ## デプロイ
+
+main に入ると GitHub Actions(`.github/workflows/deploy.yml`)が `cdk deploy --all` する。手元から出すときは:
 
 ```sh
 cd infra
@@ -163,9 +178,46 @@ Cognito のコールバック URL には本番のオリジンが要るが、Clou
 2. `infra/cdk.json` の `context.siteUrl` にその値を書く(`https://dxxxx.cloudfront.net`、末尾スラッシュ無し)
 3. もう一度 `cdk deploy --all` する
 
-CloudFront のドメインは作り直さない限り変わらない。独自ドメインを当てたら `siteUrl` をそれに差し替える。
+CloudFront のドメインは作り直さない限り変わらない。独自ドメインを当てるなら、下の手順のほうが早い(2 段階が要らない)。
 
 Cognito の確認メールは既定の送信元(1 日 50 通まで)で送っている。利用者が増えたら SES に切り替える。
+
+### 独自ドメイン(shaders-art.com)
+
+1. ドメインを買い、Route 53 にホストゾーンを用意する。Route 53 で買えばホストゾーンは自動で作られる。
+   ほかで買ったときは Route 53 にホストゾーンを作り、そのネームサーバー(NS)を買った先に登録する
+2. `infra/cdk.json` の `context.domainName` にドメインを書く(`shaders-art.com`。`https://` は付けない)。
+   `siteUrl` は空のままでよい(空なら `https://<domainName>` になる)
+3. `cdk deploy --all` する。`ShadersArtWafStack`(us-east-1)が証明書を作って DNS で検証し、
+   `ShadersArtStack` が CloudFront に別名と証明書を付け、A / AAAA レコードを書き込む
+
+証明書の検証は、ホストゾーンが引けるようになってから数分かかる(その間 `cdk deploy` は待つ)。
+ホストゾーンを引く(`HostedZone.fromLookup`)ので、デプロイには AWS の認証情報が要る。引いた結果は `infra/cdk.context.json` に残るが、
+AWS のアカウント ID が入るのでコミットしない(`.gitignore`。GitHub Actions のデプロイはそのつど引き直す)。
+
+### GitHub Actions からデプロイする(初回の準備)
+
+AWS には OIDC で入る(アクセスキーは置かない)。GitHub の OIDC プロバイダはアカウントにすでにある前提。
+
+1. 手元から、デプロイ用のロールを作る(1 回だけ。`--all` には入れていない)
+
+   ```sh
+   cd infra
+   pnpm cdk --app "node bin/github-deploy.ts" deploy ShadersArtGithubDeployStack
+   ```
+
+   ロール `shaders-art-github-deploy` に直接付けるのは CDK のブートストラップのロール(`cdk-hnb659fds-*`)を引き受ける権限だけ。
+   ただし CloudFormation を通して管理者と同じことができるので、信頼するのはこのリポジトリの environment `production` のジョブだけにし、
+   そのジョブで動くコードも絞っている(下)
+2. GitHub に environment `production` を作り、Deployment branches を `main` だけにする
+3. リポジトリの Variables に `AWS_DEPLOY_ROLE_ARN`(1 の出力 `DeployRoleArn`)、`ADMIN_EMAILS`、`AI_UNLIMITED_EMAILS`、
+   必要なら `CLAUDE_WORKSPACE_ID` を入れる(中身は `deploy.yml` の先頭のコメント)
+4. Actions の Deploy を手で起動する(workflow_dispatch)か、main に push する
+
+Deploy は 2 つのジョブに分かれている。`build` は AWS の認証情報を持たずに OpenNext でビルドし(`src/` のコードが動くのはここだけ)、
+`deploy` はその成果物を受け取って `cdk deploy -c skipBuild=true` だけをする。`deploy` で動くのは `infra/` と `src/lib/aiModels.ts` で、
+どちらも AI のレビューだけではマージされない(`.github/ai-review/human-required.txt`)。OpenNext の版は `deploy.yml` と
+`infra/lib/nextjs-site.ts` の両方で固定している。
 
 ## アクセス解析
 

@@ -1,3 +1,4 @@
+import type { ReportedWork, ReportReason } from "@/lib/moderation";
 import type { MockWork } from "@/mocks/works/data";
 import type { SubmissionInput } from "@/lib/submission";
 import type { HomeSelection, WorksPage, WorksSort } from "@/lib/worksQuery";
@@ -43,11 +44,67 @@ export async function getHome(): Promise<HomeSelection<WorkSummary>> {
   return (await res.json()) as HomeSelection<WorkSummary>;
 }
 
-export async function getWork(slug: string): Promise<Work | null> {
-  const res = await fetch(`${BASE}/works/${encodeURIComponent(slug)}`);
+/** 作品ページを見ている人と作品の関係。作者・運営の操作や「通報済み」の出し分けに使う */
+export interface WorkViewer {
+  signedIn: boolean;
+  owner: boolean;
+  admin: boolean;
+  reported: boolean;
+}
+
+/** 詳細。viewer はモックや古い API では無いことがある(無ければ、ログインしていない人として扱う) */
+export type WorkDetail = Work & { viewer?: WorkViewer };
+
+export async function getWork(slug: string): Promise<WorkDetail | null> {
+  // 見ている人によって中身が変わる(作者・運営には非公開の作品も返る)ので、キャッシュを使わない
+  const res = await fetch(`${BASE}/works/${encodeURIComponent(slug)}`, { cache: "no-store" });
   if (res.status === 404) return null;
   if (!res.ok) throw new ApiError(res.status);
-  return (await res.json()) as Work;
+  return (await res.json()) as WorkDetail;
+}
+
+/** 作者が公開・非公開を切り替える */
+export async function setWorkVisibility(slug: string, visibility: "public" | "private"): Promise<void> {
+  const res = await fetch(`/api/works/${encodeURIComponent(slug)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ visibility }),
+  });
+  if (!res.ok) throw new ApiError(res.status);
+}
+
+/** 作品を消す(作者か運営)。元に戻せない */
+export async function deleteWork(slug: string): Promise<void> {
+  const res = await fetch(`/api/works/${encodeURIComponent(slug)}`, { method: "DELETE" });
+  if (!res.ok) throw new ApiError(res.status);
+}
+
+/** 通報する(要ログイン)。同じ作品への 2 回目も成功として返る */
+export async function reportWork(slug: string, input: { reason: ReportReason; note: string }): Promise<void> {
+  const res = await fetch(`/api/works/${encodeURIComponent(slug)}/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new ApiError(res.status);
+}
+
+/** 運営: 通報があるか非公開にされている作品。運営でなければ null */
+export async function getReportedWorks(): Promise<ReportedWork[] | null> {
+  const res = await fetch("/api/admin/reports", { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiError(res.status);
+  return ((await res.json()) as { items: ReportedWork[] }).items;
+}
+
+/** 運営: 非公開にする(hide)・確認して戻す(restore) */
+export async function moderateWork(slug: string, action: "hide" | "restore"): Promise<void> {
+  const res = await fetch(`/api/admin/works/${encodeURIComponent(slug)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) throw new ApiError(res.status);
 }
 
 /**

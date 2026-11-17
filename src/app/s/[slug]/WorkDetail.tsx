@@ -10,10 +10,12 @@ import { CodeBlock } from "@/components/CodeBlock";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
+import { HiddenNotice, ReportButton, WorkManageMenu } from "@/components/WorkModeration";
 import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
 import { useI18n } from "@/lib/i18n/client";
+import { isPublicWork } from "@/lib/moderation";
 import { findLicense, licenseUrl } from "@/lib/submission";
-import { getWork, type Work } from "@/lib/works";
+import { getWork, type WorkDetail as Work } from "@/lib/works";
 
 // 仕様: Figma "Shader / Desktop 1440"(node 41:513)。/edit と同じ「左にコード・
 // 右に描画」の構え。右側は ShaderStage(Three.js)で実際に GLSL を動かす。
@@ -46,7 +48,8 @@ export function WorkDetail({ slug }: { slug: string }) {
     const origin = window.location.origin;
     let cancelled = false;
     const url =
-      work.visibility === "private"
+      // 運営や通報で非公開になった作品も、ほかの人は slug の URL を開けない
+      !isPublicWork(work)
         ? stageUrlForSource(origin, work.source)
         : Promise.resolve(stageUrlForWork(origin, work.slug));
     void url.then((value) => {
@@ -92,7 +95,16 @@ export function WorkDetail({ slug }: { slug: string }) {
   const license = findLicense(work.license);
   const licenseLabel = license ? t.license[license.id].label : work.license;
   const spec: [string, ReactNode][] = [
-    [t.work.visibility, work.visibility === "private" ? t.common.private : t.work.public],
+    [
+      t.work.visibility,
+      work.hiddenBy === "reports"
+        ? t.moderation.admin.hiddenByReports
+        : work.hiddenBy
+          ? t.moderation.hiddenNotice
+          : work.visibility === "private"
+            ? t.common.private
+            : t.work.public,
+    ],
     ["Size", `${work.bytes} B`],
     [
       "License",
@@ -133,6 +145,13 @@ export function WorkDetail({ slug }: { slug: string }) {
               </p>
             </div>
             <FavoriteButton work={work} variant="inline" />
+            <WorkManageMenu work={work} onChange={(next) => setState({ status: "found", work: next })} />
+            <ReportButton
+              work={work}
+              onReported={() =>
+                setState({ status: "found", work: { ...work, viewer: work.viewer && { ...work.viewer, reported: true } } })
+              }
+            />
             <Menu>
               <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!stageUrl} />}>{t.work.streamEmbed}</MenuTrigger>
               <MenuContent align="end">
@@ -181,6 +200,7 @@ export function WorkDetail({ slug }: { slug: string }) {
               {t.work.openInEditor}
             </Button>
           </div>
+          <HiddenNotice work={work} />
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
             <span className="flex-1">main.glsl</span>
             <span>vec4 render(vec2 uv, vec2 p)</span>

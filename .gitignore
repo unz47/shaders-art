@@ -14,3 +14,7 @@ cdk.out
 # 起動するたびに作り直されるのでコミットしない
 AGENTS.md
 CLAUDE.md
+
+# CDK のルックアップの結果(AWS のアカウント ID とホストゾーンの ID が入る)。公開リポジトリなのでコミットしない。
+# デプロイのジョブはそのつど引き直す
+infra/cdk.context.json

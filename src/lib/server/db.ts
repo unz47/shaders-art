@@ -11,12 +11,16 @@ export function tableName(): string {
   return name;
 }
 
-/**
- * 公開 API で返す形に整える。authorId(Cognito のユーザー ID)は持ち主の判定にだけ使い、
- * 外には出さない。表示名は投稿ごとの自己申告なので、ID を出すと別名の投稿が結び付いてしまう。
- */
-export function toPublicWork<T extends object>(item: T): Omit<T, "authorId"> {
-  return Object.fromEntries(Object.entries(item).filter(([key]) => key !== "authorId")) as Omit<T, "authorId">;
+// 公開 API で返さない項目。authorId(Cognito のユーザー ID)は持ち主の判定にだけ使う。表示名は投稿ごとの
+// 自己申告なので、ID を出すと別名の投稿が結び付いてしまう。通報の数と非公開にした日時は運営だけが見る
+const PRIVATE_FIELDS = new Set(["authorId", "reportCount", "hiddenAt"]);
+
+/** 公開 API で返す形に整える(PRIVATE_FIELDS を外す) */
+export function toPublicWork<T extends object>(item: T): Omit<T, "authorId" | "reportCount" | "hiddenAt"> {
+  return Object.fromEntries(Object.entries(item).filter(([key]) => !PRIVATE_FIELDS.has(key))) as Omit<
+    T,
+    "authorId" | "reportCount" | "hiddenAt"
+  >;
 }
 
 /**

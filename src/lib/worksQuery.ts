@@ -1,3 +1,4 @@
+import { isPublicWork } from "./moderation";
 import type { Work } from "./works";
 
 // 「すべての作品」(/works)の検索・並び替え・ページ分けと、Home に出す作品の選び方。
@@ -57,10 +58,8 @@ export function matchesQuery(work: Pick<Work, "title" | "author" | "description"
   return terms.every((term) => text.includes(term));
 }
 
-/** visibility が無い既存作品は公開扱い */
-export function isPublicWork(work: Pick<Work, "visibility">): boolean {
-  return work.visibility === undefined || work.visibility === "public";
-}
+// 公開かどうかの決まり(運営・通報による非公開を含む)は lib/moderation にある
+export { isPublicWork };
 
 const favorites = (work: Work) => work.favoriteCount ?? 0;
 // 同じ日時のときも並びが毎回変わらないよう、最後は slug で決める
