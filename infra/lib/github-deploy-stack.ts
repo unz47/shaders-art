@@ -3,7 +3,10 @@ import { OpenIdConnectPrincipal, OpenIdConnectProvider, PolicyStatement, Role } 
 import type { Construct } from "constructs";
 
 export interface GithubDeployStackProps extends StackProps {
-  /** owner/name。このリポジトリの、下の environment のジョブだけが引き受けられる */
+  /**
+   * OIDC トークンの sub の repo: の後ろの部分。既定は owner/name だが、immutable subject のリポジトリでは
+   * owner@<ID>/name@<ID> になる。このリポジトリの、下の environment のジョブだけが引き受けられる
+   */
   repository: string;
   /** GitHub の environment 名。.github/workflows/deploy.yml の environment と同じにする */
   environment: string;
@@ -39,7 +42,7 @@ export class GithubDeployStack extends Stack {
       assumedBy: new OpenIdConnectPrincipal(provider, {
         StringEquals: {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          // environment を付けたジョブの sub は repo:<owner/name>:environment:<名前> になる。
+          // environment を付けたジョブの sub は repo:<repository>:environment:<名前> になる。
           // environment 側で main ブランチからしか使えないようにしてあるので、PR やほかのブランチからは引き受けられない
           "token.actions.githubusercontent.com:sub": `repo:${props.repository}:environment:${props.environment}`,
         },
