@@ -67,7 +67,10 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: design-system
 
-      - run: pnpm install --frozen-lockfile
+      # node_modules を平らに(hoisted)入れる。pnpm の既定(シンボリックリンク)のままだと、Lambda 用の
+      # バンドルの node_modules/next などがリンクになり、成果物の受け渡しや Lambda の zip でリンクが実体に
+      # 置き換わったときに、リンク先の隣にあった依存(@swc/helpers など)が見つからなくなる(初回の本番で起きた)
+      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
 
       # PR では CI が通っているが、main に入った形でももう一度確かめてから出す
       - name: テスト
@@ -79,6 +82,14 @@ jobs:
         run: npx --yes "@opennextjs/aws@${OPEN_NEXT_VERSION}" build
         env:
           NEXT_PUBLIC_API_BASE: /api
+
+      - name: バンドルにシンボリックリンクが無いか
+        run: |
+          links=$(find .open-next -type l | head -5)
+          if [ -n "$links" ]; then
+            echo "::error::.open-next にシンボリックリンクがある(Lambda で依存が見つからなくなる): $links"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -145,13 +156,17 @@ jobs:
           CLAUDE_WORKSPACE_ID: ${{ vars.CLAUDE_WORKSPACE_ID }}
         run: |
           pnpm cdk deploy --all --require-approval never --progress events \
+            --outputs-file cdk-outputs.json \
             -c skipBuild=true \
             -c "adminEmails=$ADMIN_EMAILS" \
             -c "aiUnlimitedEmails=$AI_UNLIMITED_EMAILS" \
             -c "claudeWorkspaceId=$CLAUDE_WORKSPACE_ID"
 
+      # デプロイ用のロールは CloudFormation を直接読めないので、cdk が書き出した出力から読む
       - name: 本番の URL
         run: |
-          url=$(aws cloudformation describe-stacks --stack-name ShadersArtStack \
-            --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text)
+          url=$(jq -r '.ShadersArtStack.SiteUrl' cdk-outputs.json)
           echo "本番: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/auth/me")
+          echo "GET /api/auth/me → $code" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$code" = 200 ] || { echo "::error::本番の API が $code を返した"; exit 1; }
