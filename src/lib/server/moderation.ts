@@ -31,8 +31,12 @@ function isReportRow(item: Record<string, unknown>): item is Record<string, unkn
 
 type WorkRow = Record<string, unknown> & { slug: string; authorId?: string; visibility?: string; hiddenBy?: string };
 
-export async function getWorkRow(slug: string): Promise<WorkRow | null> {
-  const { Item } = await db.send(new GetCommand({ TableName: tableName(), Key: { slug }, ConsistentRead: true }));
+/**
+ * 作品の行。既定は書いた直後の値も読める強い整合性の読み取り。検索結果やカード用の名前(app/s/[slug] のメタデータ)のように
+ * 少し古くてよいところは { consistent: false } にして、読み取りの費用を半分にする
+ */
+export async function getWorkRow(slug: string, { consistent = true }: { consistent?: boolean } = {}): Promise<WorkRow | null> {
+  const { Item } = await db.send(new GetCommand({ TableName: tableName(), Key: { slug }, ConsistentRead: consistent }));
   return Item && isWorkItem(Item) ? (Item as WorkRow) : null;
 }
 
