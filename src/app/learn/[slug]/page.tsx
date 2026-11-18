@@ -11,6 +11,7 @@ import { LessonPlayground } from "@/components/learn/LessonPlayground";
 import type { Dictionary } from "@/lib/i18n";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
 import { type LocalizedBlock, type LocalizedLesson, localizeLesson } from "@/lib/learn/localize";
+import { pageMetadata } from "@/lib/site";
 
 // /learn/{slug} … 学習の 1 回分。本文はサーバーで見る人の言語に絞って描き、書き換えられるコード(playground)と
 // 課題(exercise)だけをブラウザの部品にする。
@@ -21,7 +22,7 @@ export async function generateMetadata({ params }: PageProps<"/learn/[slug]">): 
   const { slug } = await params;
   const lesson = localizeLesson(slug, await getLocale());
   if (!lesson) return {};
-  return { title: `${lesson.title} — Learn — shaders.art`, description: lesson.summary };
+  return pageMetadata(`${lesson.title} — Learn`, lesson.summary);
 }
 
 export default async function LessonPage({ params }: PageProps<"/learn/[slug]">) {

@@ -21,6 +21,12 @@ export const ja = {
     favorites: "お気に入り",
     myWorks: "自分の作品",
   },
+  // 検索結果と、リンクを貼ったときのカード(app/layout・app/s/[slug]/page)
+  meta: {
+    description:
+      "GLSL のフラグメントシェーダーを書いて、ブラウザでそのまま動かし、作品として展示できるギャラリー。0 から学べる全 30 回のコースつき。",
+    work: (author: string, bytes: number) => `${author} の GLSL シェーダー(${bytes} bytes)。shaders.art でそのまま動かして見られます。`,
+  },
   footer: {
     language: "言語",
   },

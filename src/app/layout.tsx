@@ -1,14 +1,29 @@
 import type { Metadata } from "next";
 import { ToastProvider, ToastViewport } from "@frost-ui/react/organisms/toast";
 import { I18nProvider } from "@/lib/i18n/client";
-import { getLocale } from "@/lib/i18n/server";
+import { getDictionary, getLocale } from "@/lib/i18n/server";
+import { OG_IMAGE, SITE_URL } from "@/lib/site";
 import { MockProvider } from "@/mocks/MockProvider";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "shaders.art",
-  description: "a museum of fragment shaders",
-};
+// 検索結果とリンクを貼ったときのカード。ページごとの title は template に入る(例: 作品名 — shaders.art)。
+// カードの画像は app/og.png(ビルド時に 1 枚作る)。作品ページも今はこれを使う
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getDictionary();
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: { default: "shaders.art", template: "%s — shaders.art" },
+    description: t.meta.description,
+    openGraph: {
+      siteName: "shaders.art",
+      type: "website",
+      title: "shaders.art",
+      description: t.meta.description,
+      images: [OG_IMAGE],
+    },
+    twitter: { card: "summary_large_image" },
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // 言語はサーバーで決めて(Cookie → Accept-Language → 英語)、ブラウザ側の文言(I18nProvider)と html の lang に渡す

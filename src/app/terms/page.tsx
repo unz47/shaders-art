@@ -13,7 +13,7 @@ import { TermsJa } from "./TermsJa";
 // 権利に関わる文書なので、本番で公開する前に専門家に確認してもらうこと(Notion の未解決の課題にも記載)。
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return { title: locale === "ja" ? "利用規約 — shaders.art" : "Terms of Service — shaders.art" };
+  return { title: locale === "ja" ? "利用規約" : "Terms of Service" };
 }
 
 export default async function TermsPage() {

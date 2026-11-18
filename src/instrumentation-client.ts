@@ -1,6 +1,7 @@
 // アクセス解析(issue #43)。ページを開いたときと、ページを移ったとき(App Router の遷移)に、
 // パスと参照元のドメインだけを POST /api/pv に送る(数え方は lib/server/pageViews)。
 // Cookie も端末に残す ID も使わない。クエリ(検索語など)と # の後ろ(/stage の下書きのコード)は送らない。
+// ただし告知のリンクに付けた utm_source だけは、最初に開いたときに src として送る(どの告知から来たか)。
 // ブラウザで「追跡しない」(Global Privacy Control / Do Not Track)を選んでいる人と、モックのときは送らない。
 
 const enabled =
@@ -11,10 +12,10 @@ const enabled =
 // 同じページの中でクエリだけが変わったとき(/works の検索やページ送り)は数えない
 let lastPath: string | null = null;
 
-function sendPageView(path: string, ref: string | null) {
+function sendPageView(path: string, ref: string | null, src: string | null = null) {
   if (!enabled || path === lastPath) return;
   lastPath = path;
-  navigator.sendBeacon("/api/pv", JSON.stringify({ path, ref }));
+  navigator.sendBeacon("/api/pv", JSON.stringify({ path, ref, src }));
 }
 
 /** よそのサイトから来たときだけ、そのサイトのドメイン */
@@ -25,7 +26,7 @@ function externalReferrer(): string | null {
 }
 
 try {
-  sendPageView(location.pathname, externalReferrer());
+  sendPageView(location.pathname, externalReferrer(), new URLSearchParams(location.search).get("utm_source"));
 } catch {
   // 記録できなくてもページは動かす
 }

@@ -22,6 +22,11 @@ export const en: Dictionary = {
     favorites: "Favorites",
     myWorks: "My works",
   },
+  meta: {
+    description:
+      "A museum of fragment shaders. Write GLSL in the browser, watch it run live, and publish it to the gallery. Includes a free 30-lesson course from zero.",
+    work: (author: string, bytes: number) => `A GLSL shader by ${author} (${bytes} bytes). Watch it run live on shaders.art.`,
+  },
   footer: {
     language: "Language",
   },

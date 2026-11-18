@@ -6,7 +6,7 @@ import { AdminReports } from "./AdminReports";
 // 運営でなければ API が 404 を返すので、このページには何も出ない。ナビには出さない。
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getDictionary();
-  return { title: `${t.moderation.admin.title} — shaders.art`, robots: { index: false } };
+  return { title: `${t.moderation.admin.title}`, robots: { index: false } };
 }
 
 export default function AdminPage() {

@@ -12,7 +12,7 @@ import { PrivacyJa } from "./PrivacyJa";
 // 本番で公開する前に専門家に確認してもらうこと。
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return { title: locale === "ja" ? "プライバシーポリシー — shaders.art" : "Privacy Policy — shaders.art" };
+  return { title: locale === "ja" ? "プライバシーポリシー" : "Privacy Policy" };
 }
 
 export default async function PrivacyPage() {

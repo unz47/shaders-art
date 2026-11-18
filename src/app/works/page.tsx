@@ -11,7 +11,7 @@ const first = (value: string | string[] | undefined) => (Array.isArray(value) ? 
 export async function generateMetadata({ searchParams }: PageProps<"/works">): Promise<Metadata> {
   const [params, t] = await Promise.all([searchParams, getDictionary()]);
   const q = parseQuery(first(params.q));
-  return { title: `${q ? t.works.searchTitle(q) : t.works.title} — shaders.art` };
+  return { title: `${q ? t.works.searchTitle(q) : t.works.title}` };
 }
 
 export default async function WorksPage({ searchParams }: PageProps<"/works">) {
