@@ -17,7 +17,7 @@ interface Params {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   try {
-    const row = await getWorkRow(slug);
+    const row = await getWorkRow(slug, { consistent: false });
     if (!row || !isPublicWork(row)) return { robots: { index: false } };
     const t = await getDictionary();
     const title = oneLine(row.title, 100) || "Untitled";
