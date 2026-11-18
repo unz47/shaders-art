@@ -3,6 +3,7 @@ import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
 import { localizeCourse } from "@/lib/learn/localize";
+import { pageMetadata } from "@/lib/site";
 import { CourseIndex } from "./CourseIndex";
 
 // /learn … 学習のコースの目次。全 30 回を 4 部に分けて並べる。進み具合(終えた回)はこのブラウザに
@@ -10,7 +11,7 @@ import { CourseIndex } from "./CourseIndex";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getDictionary();
-  return { title: `${t.learn.metaTitle} — shaders.art`, description: t.learn.intro };
+  return pageMetadata(t.learn.metaTitle, t.learn.intro);
 }
 
 export default async function LearnPage() {

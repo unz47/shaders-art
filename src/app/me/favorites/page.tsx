@@ -6,7 +6,7 @@ import { MyFavorites } from "./MyFavorites";
 // 中身はブラウザで取る(MyFavorites)。
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getDictionary();
-  return { title: `${t.me.favorites} — shaders.art`, robots: { index: false } };
+  return { title: `${t.me.favorites}`, robots: { index: false } };
 }
 
 export default function MyFavoritesPage() {

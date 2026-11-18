@@ -3,12 +3,20 @@ import { clientIp, isBot, parsePageView, visitorId } from "./pageViews";
 
 describe("parsePageView", () => {
   it("パスと参照元のドメインを読む", () => {
-    expect(parsePageView(JSON.stringify({ path: "/s/clouds", ref: "X.com" }))).toEqual({ path: "/s/clouds", ref: "x.com" });
-    expect(parsePageView(JSON.stringify({ path: "/", ref: null }))).toEqual({ path: "/", ref: null });
+    expect(parsePageView(JSON.stringify({ path: "/s/clouds", ref: "X.com" }))).toEqual({ path: "/s/clouds", ref: "x.com", src: null });
+    expect(parsePageView(JSON.stringify({ path: "/", ref: null }))).toEqual({ path: "/", ref: null, src: null });
   });
 
   it("クエリと # の後ろは残さない", () => {
-    expect(parsePageView(JSON.stringify({ path: "/works?q=雲#top" }))).toEqual({ path: "/works", ref: null });
+    expect(parsePageView(JSON.stringify({ path: "/works?q=雲#top" }))).toEqual({ path: "/works", ref: null, src: null });
+  });
+
+  it("告知の utm_source は小文字にして残し、形の違うものは捨てる", () => {
+    expect(parsePageView(JSON.stringify({ path: "/", src: "X" }))?.src).toBe("x");
+    expect(parsePageView(JSON.stringify({ path: "/", src: "zenn.dev" }))?.src).toBe("zenn.dev");
+    expect(parsePageView(JSON.stringify({ path: "/", src: "<script>" }))?.src).toBeNull();
+    expect(parsePageView(JSON.stringify({ path: "/", src: "a".repeat(41) }))?.src).toBeNull();
+    expect(parsePageView(JSON.stringify({ path: "/", src: 1 }))?.src).toBeNull();
   });
 
   it("末尾の / はそろえる(トップの / はそのまま)", () => {

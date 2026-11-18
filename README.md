@@ -256,6 +256,11 @@ filter msg = "pv" and ispresent(ref)
 | stats count(*) as views, count_distinct(visitor) as visitors by ref
 | sort views desc
 
+# どの告知から来たか(告知のリンクに ?utm_source=x などを付けておく。X のアプリは参照元を送らないので、こちらで数える)
+filter msg = "pv" and ispresent(src)
+| stats count_distinct(visitor) as visitors by src
+| sort visitors desc
+
 # /stage(配信の背景・埋め込み)の使われ方
 filter msg = "pv" and path like /^\/stage/
 | stats count(*) as views, count_distinct(visitor) as visitors by bin(1d)
