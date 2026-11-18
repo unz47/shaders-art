@@ -33,7 +33,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <ToastProvider>
               {children}
               {/* 既定は右下固定(right-sp-lg)。中央下にしたいので left/right を 0 にして mx-auto で中央寄せする */}
-              <ToastViewport className="left-0 right-0 mx-auto" />
+              {/* スマホ幅では下のタブバーに重ならないよう、その分だけ上げる */}
+              <ToastViewport className="left-0 right-0 mx-auto max-sm:bottom-[calc(var(--tabbar-h)+1rem)]" />
             </ToastProvider>
           </MockProvider>
         </I18nProvider>
