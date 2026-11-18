@@ -712,7 +712,8 @@ export default function EditPage() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
+    // 高さはスマホ幅の下のタブバー(--tabbar-h)の分を引く
+    <div className="flex h-[calc(100dvh-var(--tabbar-h))] flex-col overflow-hidden">
       <Header showSearch={false} />
       <div ref={columnsRef} className="flex flex-1 overflow-hidden">
         {/* 左: コード(編集可能) */}

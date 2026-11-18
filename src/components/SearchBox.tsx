@@ -1,10 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef } from "react";
 import { Kbd } from "@frost-ui/react/atoms/kbd";
-import searchIcon from "@/icons/search.svg";
+import { SearchIcon } from "@/components/icons";
 import { useI18n } from "@/lib/i18n/client";
 import { parseQuery, SEARCH_QUERY_MAX, worksHref, type WorksSort } from "@/lib/worksQuery";
 
@@ -55,7 +54,7 @@ export function SearchBox({
       onSubmit={handleSubmit}
       className="flex h-8 items-center gap-sp-xs rounded-control border border-border-subtle bg-bg-raised pl-sp-sm pr-1.5 focus-within:border-border-strong"
     >
-      <Image src={searchIcon} alt="" width={16} height={16} />
+      <SearchIcon className="shrink-0 text-text-secondary" />
       <input
         ref={inputRef}
         type="search"
