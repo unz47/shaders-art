@@ -118,7 +118,10 @@ export function workData(locale: Locale, work: Pick<Work, "slug" | "title" | "au
         programmingLanguage: "GLSL",
         runtimePlatform: "WebGL",
         ...(work.tags.length > 0 ? { keywords: work.tags.join(", ") } : {}),
-        ...(license ? { license: new URL(licenseUrl(license, locale), SITE_URL).toString() } : {}),
+        // 標準のライセンス(利用規約の #license)は、そのページの言語の利用規約を指す
+        ...(license
+          ? { license: license.url.startsWith("/") ? absoluteUrl(locale, license.url) : licenseUrl(license, locale) }
+          : {}),
         text: work.source,
         isPartOf: { "@type": "WebSite", name: SITE_NAME, url: absoluteUrl(locale, "/") },
       },
