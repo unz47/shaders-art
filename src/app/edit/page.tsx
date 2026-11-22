@@ -1015,7 +1015,7 @@ export default function EditPage() {
                 <span className="flex-1">{t.edit.dialog.reuseLegend}</span>
                 {/* ダイアログを閉じずに読めるよう別のタブで開く(下書きは残る) */}
                 <a
-                  href="/terms#license"
+                  href={localize("/terms#license")}
                   target="_blank"
                   rel="noopener"
                   className="text-xs font-normal text-text-secondary underline underline-offset-2 hover:text-text-primary"

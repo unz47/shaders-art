@@ -23,6 +23,7 @@ interface Params {
 const getPublicWork = cache(async (slug: string): Promise<Work | null> => {
   try {
     const row = await getWorkRow(slug, { consistent: false });
+    // 表の行は型の無い Record なので、一覧(lib/server/db の scanAllWorks)や /api/works/:slug と同じく Work として扱う
     return row && isPublicWork(row) ? (toPublicWork(row) as unknown as Work) : null;
   } catch (error) {
     // 表が読めなくても作品ページは出す(中身はブラウザが API から取る)
