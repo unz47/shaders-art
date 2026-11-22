@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { useEffect, useState } from "react";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
 import {
@@ -13,7 +13,7 @@ import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { WorkCard } from "@/components/WorkCard";
 import { loginHref, useSession } from "@/lib/useSession";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { ApiError, getMyWorks, type WorkSummary } from "@/lib/works";
 
 type State =
@@ -25,6 +25,7 @@ type State =
 export function MyWorks() {
   const session = useSession();
   const { t } = useI18n();
+  const localize = useLocalize();
   const [state, setState] = useState<State>({ status: "loading" });
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export function MyWorks() {
             {session.status === "ready" && session.configured && (
               <EmptyStateActions>
                 {/* Route Handler へのフルページ遷移なので <Link> ではなく <a> */}
-                <a href={loginHref("/me")} className={buttonVariants({ variant: "primary", size: "sm" })}>
+                <a href={loginHref(localize("/me"))} className={buttonVariants({ variant: "primary", size: "sm" })}>
                   Sign in
                 </a>
               </EmptyStateActions>

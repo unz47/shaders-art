@@ -26,7 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // 言語はサーバーで決めて(Cookie → Accept-Language → 英語)、ブラウザ側の文言(I18nProvider)と html の lang に渡す
+  // 言語は URL で決まる(/ja/… は日本語。src/proxy.ts と lib/i18n/locale)。ブラウザ側の文言(I18nProvider)と html の lang に渡す
   const locale = await getLocale();
   // frost-ui の既定は Dark。Figma の Home は Light を前提にしているので固定するが、
   // ヘッダーのトグルで Dark に切り替えられる(localStorage に保存)。

@@ -26,11 +26,23 @@ export const en: Dictionary = {
     description:
       "A museum of fragment shaders. Write GLSL in the browser, watch it run live, and publish it to the gallery. Includes a free 30-lesson course from zero.",
     work: (author: string, bytes: number) => `A GLSL shader by ${author} (${bytes} bytes). Watch it run live on shaders.art.`,
+    /** トップの title(サイト名の後ろに付く「— shaders.art」は付けない) */
+    homeTitle: "shaders.art — write GLSL shaders in your browser and learn them from zero",
+    works:
+      "Every GLSL fragment shader published on shaders.art. Hover a card to play it; sort by newest, most favorited, or shortest code.",
+    editTitle: "Shader editor",
+    editDescription:
+      "Write a GLSL fragment shader in your browser and watch it run as you type. Check its size and speed, then publish it to the gallery.",
+    /** 学習の各回の description の書き出し。続けてその回の一言と「できるようになること」を並べる */
+    lesson: (n: number, minutes: number) => `Free GLSL shader course, lesson ${n} (${minutes} min).`,
   },
   footer: {
     language: "Language",
   },
   home: {
+    heading: "shaders.art — a museum of fragment shaders",
+    intro: "Write GLSL fragment shaders in your browser, watch them run live, and show them here.",
+    learnLink: "New to shaders? Take the free 30-lesson course",
     todaysPick: "Today’s pick",
     yourFavorites: (n: number) => `Your favorites · ${n}`,
     popular: "Most favorited",

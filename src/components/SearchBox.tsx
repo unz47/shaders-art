@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef } from "react";
 import { Kbd } from "@frost-ui/react/atoms/kbd";
 import { SearchIcon } from "@/components/icons";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { parseQuery, SEARCH_QUERY_MAX, worksHref, type WorksSort } from "@/lib/worksQuery";
 
 // 作品の検索欄(ヘッダーと /works)。送ると /works?q=… に移る。検索語が空ならすべての作品。
@@ -21,6 +21,7 @@ export function SearchBox({
   shortcut?: boolean;
 }) {
   const router = useRouter();
+  const localize = useLocalize();
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -43,7 +44,7 @@ export function SearchBox({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push(worksHref({ sort, q: parseQuery(inputRef.current?.value) }));
+    router.push(localize(worksHref({ sort, q: parseQuery(inputRef.current?.value) })));
   }
 
   return (

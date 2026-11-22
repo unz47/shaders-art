@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from "@/components/Link";
 import { EditIcon, GalleryIcon, LearnIcon, SearchIcon } from "@/components/icons";
+import { usePagePath } from "@/lib/i18n/client";
 
 // スマホ幅(sm 未満)だけ、画面の下に出すタブバー。親指で 1 回押せば行き来できるようにする
 // (ヘッダーの「≡」メニューだと 2 回押す必要があった)。
@@ -16,7 +16,7 @@ const TABS = [
 ] as const;
 
 export function MobileTabBar() {
-  const pathname = usePathname();
+  const pathname = usePagePath();
 
   return (
     <nav

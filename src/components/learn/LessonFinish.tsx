@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { Button, buttonVariants } from "@frost-ui/react/atoms/button";
 import { useI18n } from "@/lib/i18n/client";
 import type { LessonLink } from "@/lib/learn/localize";

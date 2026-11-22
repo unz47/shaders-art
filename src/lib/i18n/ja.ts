@@ -26,11 +26,23 @@ export const ja = {
     description:
       "GLSL のフラグメントシェーダーを書いて、ブラウザでそのまま動かし、作品として展示できるギャラリー。0 から学べる全 30 回のコースつき。",
     work: (author: string, bytes: number) => `${author} の GLSL シェーダー(${bytes} bytes)。shaders.art でそのまま動かして見られます。`,
+    /** トップの title(サイト名の後ろに付く「— shaders.art」は付けない) */
+    homeTitle: "shaders.art — ブラウザで GLSL シェーダーを書いて展示する。0 から学べる無料講座つき",
+    works:
+      "shaders.art に投稿された GLSL フラグメントシェーダーの一覧。カードに乗せると動きます。新しい順・お気に入りの多い順・コードの短い順に並べ替えられます。",
+    editTitle: "シェーダーエディタ",
+    editDescription:
+      "ブラウザで GLSL のフラグメントシェーダーを書くと、その場で動きます。サイズや重さを確かめてから、ギャラリーに投稿できます。",
+    /** 学習の各回の description の書き出し。続けてその回の一言と「できるようになること」を並べる */
+    lesson: (n: number, minutes: number) => `無料の GLSL シェーダー入門講座、第 ${n} 回(${minutes} 分)。`,
   },
   footer: {
     language: "言語",
   },
   home: {
+    heading: "shaders.art — フラグメントシェーダーの美術館",
+    intro: "GLSL のフラグメントシェーダーをブラウザで書いて、その場で動かし、ここに展示できます。",
+    learnLink: "はじめての人へ: 0 から学べる全 30 回の無料コース",
     todaysPick: "今日の 1 点",
     yourFavorites: (n: number) => `あなたのお気に入り · ${n}`,
     popular: "お気に入りの多い作品",

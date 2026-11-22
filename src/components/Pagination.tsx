@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 
 // 仕様: Figma "Home / Desktop 1440" > Pagination(node 25:226, Layout=Full)
 // ページは URL(?page=)で持つので、ボタンではなくリンクにする(戻る・共有でも同じページに戻れる)。
