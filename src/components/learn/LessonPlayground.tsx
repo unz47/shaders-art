@@ -6,7 +6,7 @@ import { Slider } from "@frost-ui/react/atoms/slider";
 import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview } from "@/components/ShaderEditorPreview";
 import { commit, createHistory, redo, undo } from "@/lib/editHistory";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { encodeSource } from "@/lib/stageUrl";
 
 // 学習(/learn)の「書き換えられるコードとプレビュー」。/edit と同じエディタとプレビュー(ShaderCodeEditor・
@@ -139,6 +139,7 @@ export function PlaygroundFrame({
   const { t } = useI18n();
   const [attention, setAttention] = useState(0);
   const editorHref = useEditorHref(state.compiled);
+  const localize = useLocalize();
 
   return (
     <div className="overflow-hidden rounded-xl border border-border-subtle bg-bg-base">
@@ -187,7 +188,7 @@ export function PlaygroundFrame({
         </Button>
         <div className="flex-1" />
         <a
-          href={editorHref}
+          href={localize(editorHref)}
           target="_blank"
           rel="noopener"
           title={t.learn.playground.openInEditorHint}

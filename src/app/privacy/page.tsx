@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/Link";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { getLocale } from "@/lib/i18n/server";
+import { pageMetadata } from "@/lib/site";
 import { PrivacyEn } from "./PrivacyEn";
 import { PrivacyJa } from "./PrivacyJa";
 
@@ -12,7 +13,21 @@ import { PrivacyJa } from "./PrivacyJa";
 // 本番で公開する前に専門家に確認してもらうこと。
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return { title: locale === "ja" ? "プライバシーポリシー" : "Privacy Policy" };
+  return pageMetadata(
+    locale === "ja"
+      ? {
+          locale,
+          path: "/privacy",
+          title: "プライバシーポリシー",
+          description: "shaders.art での個人情報の扱い。集める情報、使う目的、送り先、消す時期など。",
+        }
+      : {
+          locale,
+          path: "/privacy",
+          title: "Privacy Policy",
+          description: "How shaders.art handles personal data: what is collected, why, where it is sent, and when it is deleted.",
+        },
+  );
 }
 
 export default async function PrivacyPage() {

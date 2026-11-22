@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from "@/components/Link";
 import { useRef, useState } from "react";
 import { Avatar } from "@frost-ui/react/atoms/avatar";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
@@ -18,7 +17,7 @@ import { MoonIcon, SearchIcon } from "@/components/icons";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { SearchBox } from "@/components/SearchBox";
 import { avatarBackground, avatarInitial } from "@/lib/avatar";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize, usePagePath } from "@/lib/i18n/client";
 import { loginHref, type SessionUser, useSession } from "@/lib/useSession";
 
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
@@ -43,7 +42,8 @@ export function Header({
   searchQuery?: string;
 }) {
   // 作品詳細ページ(/s/...)と「すべての作品」(/works)も Gallery の一部として扱い、現在地の下線を出す
-  const pathname = usePathname();
+  const pathname = usePagePath();
+  const localize = useLocalize();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/") || pathname.startsWith("/works");
   const active: Record<(typeof NAV)[number]["label"], boolean> = {
     Gallery: galleryActive,
@@ -126,7 +126,7 @@ export function Header({
           {session.status === "ready" && session.user && <AccountMenu user={session.user} />}
           {session.status === "ready" && session.configured && !session.user && (
             // Route Handler へのフルページ遷移なので <Link> ではなく <a>
-            <a href={loginHref(pathname)} className={buttonVariants({ variant: "primary", size: "sm" })}>
+            <a href={loginHref(localize(pathname))} className={buttonVariants({ variant: "primary", size: "sm" })}>
               Sign in
             </a>
           )}

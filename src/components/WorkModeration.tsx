@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { Button } from "@frost-ui/react/atoms/button";
 import { Label } from "@frost-ui/react/atoms/label";
@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@frost-ui/react/molecules/alert";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@frost-ui/react/organisms/dialog";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { useToast } from "@frost-ui/react/organisms/toast";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize, usePagePath } from "@/lib/i18n/client";
 import { REPORT_NOTE_MAX, REPORT_REASONS, type ReportReason } from "@/lib/moderation";
 import { loginHref } from "@/lib/useSession";
 import { deleteWork, moderateWork, reportWork, setWorkVisibility, type WorkDetail } from "@/lib/works";
@@ -22,6 +22,7 @@ export function WorkManageMenu({ work, onChange }: { work: WorkDetail; onChange:
   const { t } = useI18n();
   const toast = useToast();
   const router = useRouter();
+  const localize = useLocalize();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const owner = work.viewer?.owner ?? false;
@@ -49,7 +50,7 @@ export function WorkManageMenu({ work, onChange }: { work: WorkDetail; onChange:
     try {
       await deleteWork(work.slug);
       toast.add({ title: t.moderation.deleted });
-      router.push(owner ? "/me" : "/admin");
+      router.push(localize(owner ? "/me" : "/admin"));
     } catch {
       fail();
       setBusy(false);
@@ -127,7 +128,8 @@ export function WorkManageMenu({ work, onChange }: { work: WorkDetail; onChange:
 export function ReportButton({ work, onReported }: { work: WorkDetail; onReported: () => void }) {
   const { t } = useI18n();
   const toast = useToast();
-  const pathname = usePathname();
+  const pathname = usePagePath();
+  const localize = useLocalize();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [note, setNote] = useState("");
@@ -168,7 +170,7 @@ export function ReportButton({ work, onReported }: { work: WorkDetail; onReporte
         onClick={() => {
           if (!viewer.signedIn) {
             // Route Handler へのフルページ遷移
-            window.location.assign(loginHref(pathname));
+            window.location.assign(loginHref(localize(pathname)));
             return;
           }
           setOpen(true);

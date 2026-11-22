@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { Button } from "@frost-ui/react/atoms/button";
@@ -24,8 +24,12 @@ import { getWork, type WorkDetail as Work } from "@/lib/works";
 
 type State = { status: "loading" } | { status: "missing" } | { status: "found"; work: Work };
 
-export function WorkDetail({ slug }: { slug: string }) {
-  const [state, setState] = useState<State>({ status: "loading" });
+/**
+ * initial … サーバー(page.tsx)で読んでおいた公開の作品。最初からこれを描き、見ている人との関係(viewer)は
+ * ブラウザで /api/works/:slug から取って足す。非公開の作品やサーバーで読めなかったときは null で、読み込み中から始める
+ */
+export function WorkDetail({ slug, initial }: { slug: string; initial: Work | null }) {
+  const [state, setState] = useState<State>(initial ? { status: "found", work: initial } : { status: "loading" });
   const toast = useToast();
   const { locale, t } = useI18n();
 
@@ -140,7 +144,7 @@ export function WorkDetail({ slug }: { slug: string }) {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-text-primary">{work.title}</p>
+              <h1 className="truncate text-sm font-medium text-text-primary">{work.title}</h1>
               <p className="text-xs tracking-wide text-text-secondary">
                 {work.author} · {published}
               </p>

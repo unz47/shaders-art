@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import type { ReactNode } from "react";
 
 // 利用規約(日本語版 TermsJa・英語版 TermsEn)とプライバシーポリシー(app/privacy)で共有する見た目の部品。

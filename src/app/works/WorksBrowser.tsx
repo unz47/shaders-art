@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
@@ -16,7 +16,7 @@ import { Header } from "@/components/Header";
 import { Pagination } from "@/components/Pagination";
 import { SearchBox } from "@/components/SearchBox";
 import { WorkCard } from "@/components/WorkCard";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { ApiError, getWorks, type WorkSummary } from "@/lib/works";
 import {
   WORKS_PAGE_SIZE,
@@ -34,13 +34,31 @@ import {
 
 type Result = { key: string; data: WorksPage<WorkSummary> } | { key: string; error: unknown };
 
-export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number; q: string }) {
+export function WorksBrowser({
+  sort,
+  page,
+  q,
+  initial,
+}: {
+  sort: WorksSort;
+  page: number;
+  q: string;
+  /**
+   * サーバーで読んでおいた、この並び替え・ページ・検索語の一覧(検索エンジンや AI が JavaScript を動かさずに読めるように)。
+   * サーバーで読めなかったときは null で、そのときだけブラウザから取る
+   */
+  initial: WorksPage<WorkSummary> | null;
+}) {
   const router = useRouter();
+  const localize = useLocalize();
   const { t } = useI18n();
   const key = `${sort}:${page}:${q}`;
-  const [result, setResult] = useState<Result | null>(null);
+  const [fetched, setResult] = useState<Result | null>(null);
+  // 並び替えやページを変えると、サーバーが描き直して新しい initial を渡してくる
+  const result: Result | null = initial ? { key, data: initial } : fetched;
 
   useEffect(() => {
+    if (initial) return;
     let cancelled = false;
     getWorks({ sort, page, q }).then(
       (data) => {
@@ -53,7 +71,7 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
     return () => {
       cancelled = true;
     };
-  }, [key, sort, page, q]);
+  }, [key, sort, page, q, initial]);
 
   const loading = result?.key !== key;
   const data = result && "data" in result ? result.data : null;
@@ -81,7 +99,7 @@ export function WorksBrowser({ sort, page, q }: { sort: WorksSort; page: number;
               value={sort}
               onValueChange={(value) => {
                 // 並びを変えたら 1 ページ目に戻る
-                if (value && value !== sort) router.push(worksHref({ sort: value, q }));
+                if (value && value !== sort) router.push(localize(worksHref({ sort: value, q })));
               }}
             >
               <SelectTrigger aria-labelledby="works-sort-label" className="w-48">

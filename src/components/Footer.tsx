@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 // 仕様: Figma "Home / Desktop 1440" > Footer / Statement(node 10:263)
