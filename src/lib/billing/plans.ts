@@ -2,9 +2,9 @@
 // Stripe に商品と価格を作るスクリプト(scripts/stripe-setup.mts)で共有する。
 // スクリプトが Node の型の取り除き(strip-types)で読むので、import を持たない素の TypeScript にしておく。
 //
-// 方針(#42): 閲覧・編集・投稿・配信背景は無料のまま。原価がかかる AI と、上位の中身(Learn の後半)にだけ値段を付ける。
-//   無料 … AI 月 40 クレジット・1 日 20 回。Qwen などのモデルだけ。Learn は第 1・2 部
-//   Pro  … AI 月 600 クレジット・1 日 100 回。Claude も選べる。Learn の全 30 回
+// 方針(#42): 閲覧・編集・投稿・配信背景は無料のまま。Learn の全 30 回も無料。原価がかかる AI にだけ値段を付ける。
+//   無料 … AI 月 40 クレジット・1 日 20 回。Qwen などのモデルだけ
+//   Pro  … AI 月 600 クレジット・1 日 100 回。Claude も選べる
 //   追加クレジット … 500 クレジット。発行から 6 か月で失効(資金決済法の前払式支払手段の対象外にするため)
 // 実際に請求する額は Stripe の価格(lookup key で引く)が正。ここの額は画面に出す表示用で、
 // スクリプトが Stripe に価格を作るときにも使うので、両者は同じ値になる。値段を変えるときは新しい lookup key で作り直す。
@@ -51,7 +51,7 @@ export const DEFAULT_PRO_DAILY_REQUESTS = 100;
 
 export type Plan = "free" | "pro";
 
-/** GET /api/billing/status の応答。料金ページ・プランのページ・AI 欄・Learn が使う */
+/** GET /api/billing/status の応答。料金ページ・プランのページ・AI 欄が使う */
 export interface BillingStatus {
   /** サーバーに Stripe の設定があるか。無ければ買うボタンを出さない */
   configured: boolean;

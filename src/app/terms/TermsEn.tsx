@@ -142,7 +142,7 @@ export function TermsEn() {
         <List>
           <li>
             The paid plan (“Pro”) raises the usage limits of Make with AI and unlocks the AI models available only on
-            Pro and every lesson of the course (Learn). Its contents and prices are shown on the pricing page.
+            Pro. Its contents and prices are shown on the pricing page.
           </li>
           <li>
             Pro renews automatically every month or year from the day you sign up, and is charged on the renewal date.

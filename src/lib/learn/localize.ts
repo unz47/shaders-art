@@ -1,5 +1,5 @@
 import type { Locale } from "@/lib/i18n";
-import { COURSE, FREE_LESSON_COUNT, findLesson, isProLesson, LESSONS } from "./course";
+import { COURSE, findLesson, LESSONS } from "./course";
 import { dedent, localizeSource } from "./source";
 import type { CoursePart, Lesson, LessonBlock, Text } from "./types";
 
@@ -35,8 +35,6 @@ export interface LocalizedLesson {
   slug: string;
   /** 本文があるか。まだ書いていない回は「準備中」と出す */
   ready: boolean;
-  /** Pro の人だけが全部を読める回か(lib/learn/course の access) */
-  pro: boolean;
   number: number;
   total: number;
   partTitle: string;
@@ -53,15 +51,12 @@ export interface LocalizedLesson {
 
 export interface CourseOutline {
   total: number;
-  /** 誰でも読める回の数(Pro でない部の回) */
-  freeTotal: number;
   minutes: number;
   parts: {
     id: string;
     title: string;
     description: string;
-    pro: boolean;
-    lessons: (LessonLink & { ready: boolean; pro: boolean; summary: string; minutes: number; cover: string | null })[];
+    lessons: (LessonLink & { ready: boolean; summary: string; minutes: number; cover: string | null })[];
   }[];
 }
 
@@ -125,7 +120,6 @@ export function localizeLesson(slug: string, locale: Locale): LocalizedLesson | 
   return {
     slug: lesson.slug,
     ready: lesson.blocks.length > 0,
-    pro: isProLesson(lesson),
     number,
     total: LESSONS.length,
     partTitle: pick(part.title, locale),
@@ -143,17 +137,14 @@ export function localizeLesson(slug: string, locale: Locale): LocalizedLesson | 
 export function localizeCourse(locale: Locale): CourseOutline {
   return {
     total: LESSONS.length,
-    freeTotal: FREE_LESSON_COUNT,
     minutes: LESSONS.reduce((sum, lesson) => sum + lesson.minutes, 0),
     parts: COURSE.map((part: CoursePart) => ({
       id: part.id,
       title: pick(part.title, locale),
       description: pick(part.description, locale),
-      pro: part.access === "pro",
       lessons: part.lessons.map((lesson) => ({
         slug: lesson.slug,
         ready: lesson.blocks.length > 0,
-        pro: part.access === "pro",
         number: LESSONS.indexOf(lesson) + 1,
         title: pick(lesson.title, locale),
         summary: pick(lesson.summary, locale),
@@ -171,14 +162,4 @@ export function lessonCoverSource(lesson: Lesson): string | null {
   if (exercise?.type === "exercise") return dedent(exercise.solution);
   const playground = lesson.blocks.find((b) => b.type === "playground" && !b.expectError);
   return playground?.type === "playground" ? dedent(playground.source) : null;
-}
-
-/**
- * Pro の回を Pro でない人に見せるときの、本文の頭の部分。最初の節(2 つ目の小見出しの手前まで)だけを残し、
- * 課題は外す(見本のコードを渡さないように)。何を学ぶ回かは、題名・目標・この回の内容(小見出しの一覧)で分かる
- */
-export function previewBlocks(blocks: readonly LocalizedBlock[]): LocalizedBlock[] {
-  const secondHeading = blocks.findIndex((block, i) => block.type === "heading" && blocks.slice(0, i).some((b) => b.type === "heading"));
-  const head = secondHeading === -1 ? blocks.slice(0, 3) : blocks.slice(0, secondHeading);
-  return head.filter((block) => block.type !== "exercise");
 }

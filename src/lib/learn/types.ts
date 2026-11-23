@@ -59,10 +59,5 @@ export interface CoursePart {
   id: string;
   title: Text;
   description: Text;
-  /**
-   * 誰が読めるか。free は誰でも(ログイン不要)、pro は Pro(issue #42)の人だけ。省略すると free。
-   * pro の回も、題名・説明・目標・最初の節は誰でも読める(何が学べるかが分かるように)
-   */
-  access?: "free" | "pro";
   lessons: Lesson[];
 }

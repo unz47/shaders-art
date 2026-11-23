@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { BillingStatus, CheckoutItem } from "./plans";
 
-// ブラウザから課金の API(/api/billing/*)を呼ぶ。料金ページ・プランのページ・Learn の Pro の回で使う。
+// ブラウザから課金の API(/api/billing/*)を呼ぶ。料金ページ・プランのページ・AI 欄で使う。
 
 export async function getBillingStatus(): Promise<BillingStatus | null> {
   try {

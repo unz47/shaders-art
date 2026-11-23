@@ -33,9 +33,6 @@ import yourDemo from "./lessons/30-your-demo";
 // 学習(/learn)のコース。0 から始めて、レイマーチングのデモを作って投稿できるところまでの 30 回。
 // 1 回は 30〜60 分(読む・試す・課題を含めて)。回の番号はここでの並び順で決まる(ファイル名の番号と合わせておく)。
 // レッスンのデータはサーバーだけで読み、見る人の言語に絞ってからブラウザに渡す(全部をブラウザに送らない)。
-// 第 1・2 部(18 回、2D の基礎からノイズ・光まで)は誰でも読める。第 3・4 部(3D とデモ作り)は Pro(issue #42)。
-// 無料の部分だけで作品を作って投稿できるところまで届くようにし、レイマーチングから先を Pro にした
-// (作る人を無料のまま増やしつつ、もっと先へ進みたい人に払ってもらう)。
 
 export const COURSE: CoursePart[] = [
   {
@@ -69,7 +66,6 @@ export const COURSE: CoursePart[] = [
   },
   {
     id: "three-d",
-    access: "pro",
     title: { ja: "3D の世界", en: "Into 3D" },
     description: {
       ja: "レイマーチングで、光と影のある 3D の場面を描く",
@@ -87,7 +83,6 @@ export const COURSE: CoursePart[] = [
   },
   {
     id: "demos",
-    access: "pro",
     title: { ja: "デモを作る", en: "Making demos" },
     description: {
       ja: "フラクタル・トンネル・演出・最適化を学び、自分のデモを仕上げる",
@@ -98,14 +93,6 @@ export const COURSE: CoursePart[] = [
 ];
 
 export const LESSONS: Lesson[] = COURSE.flatMap((part) => part.lessons);
-
-/** Pro の人だけが全部を読める回か */
-export function isProLesson(lesson: Lesson): boolean {
-  return COURSE.find((part) => part.lessons.includes(lesson))?.access === "pro";
-}
-
-/** 誰でも読める回の数 */
-export const FREE_LESSON_COUNT = LESSONS.filter((lesson) => !isProLesson(lesson)).length;
 
 /** 回の番号(1 から)と、その回が入っている部 */
 export function findLesson(slug: string): { lesson: Lesson; number: number; part: CoursePart } | null {

@@ -26,7 +26,7 @@ export function CourseIndex({ course }: { course: CourseOutline }) {
         <p className="text-xs font-medium tracking-wide text-accent-default">{t.learn.eyebrow}</p>
         <h1 className="text-4xl font-medium tracking-tight text-text-primary sm:text-5xl">{t.learn.title}</h1>
         <p className="max-w-[42rem] text-base leading-8 text-text-secondary">{t.learn.intro}</p>
-        <p className="text-xs tabular-nums text-text-muted">{t.learn.stats(course.total, hours, course.freeTotal)}</p>
+        <p className="text-xs tabular-nums text-text-muted">{t.learn.stats(course.total, hours)}</p>
         <div className="flex flex-wrap items-center gap-sp-md">
           {first && (
             <Link
@@ -51,14 +51,7 @@ export function CourseIndex({ course }: { course: CourseOutline }) {
       {course.parts.map((part, partIndex) => (
         <section key={part.id} className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5 border-t border-border-subtle pt-6">
-            <p className="flex items-center gap-2 text-xs font-medium text-text-muted">
-              {t.learn.part(partIndex + 1)}
-              {part.pro && (
-                <span className="rounded-full bg-accent-default/10 px-2 py-0.5 text-[11px] text-accent-default" title={t.learn.pro.badgeHint}>
-                  Pro
-                </span>
-              )}
-            </p>
+            <p className="text-xs font-medium text-text-muted">{t.learn.part(partIndex + 1)}</p>
             <h2 className="text-2xl font-medium text-text-primary">{part.title}</h2>
             <p className="text-sm text-text-secondary">{part.description}</p>
           </div>

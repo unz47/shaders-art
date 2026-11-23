@@ -270,7 +270,7 @@ export const en: Dictionary = {
     loginToSee: "Sign in to see your plan",
     currentPlan: "Current plan",
     operator: "This is an operator account, so you can use everything Pro offers without paying",
-    freeSummary: "Make with AI: up to 40 credits a month and 20 requests a day. Learn: parts 1 and 2",
+    freeSummary: "Make with AI: up to 40 credits a month and 20 requests a day",
     upgrade: "Upgrade to Pro",
     manage: "Manage subscription (cancel, payment method, receipts)",
     receipts: "Receipts and payment method",
@@ -302,7 +302,7 @@ export const en: Dictionary = {
     eyebrow: "Pricing",
     title: "Free to make, free to watch",
     intro:
-      "Viewing, making and posting works, and using them as stream backgrounds, are free forever. Pro is for people who want to use Make with AI a lot, or learn all the way through Learn.",
+      "Viewing, making and posting works, and using them as stream backgrounds, are free forever. So are all 30 lessons of Learn. Pro is for people who want to use Make with AI a lot.",
     testMode: "Test mode: you won’t really be charged",
     canceled: "Purchase canceled. You haven’t been charged",
     billingInterval: "Billing interval",
@@ -318,11 +318,11 @@ export const en: Dictionary = {
     redirecting: "Opening the payment page…",
     free: {
       name: "Free",
-      note: "View and make works, and read the first half of Learn, even without signing in",
+      note: "View and make works, and take all 30 lessons of Learn, even without signing in",
       features: (credits: number, daily: number) => [
         "View, make, post and export works",
         "Stream backgrounds, wallpapers and embeds (/stage)",
-        "Learn parts 1 and 2 (18 lessons)",
+        "All 30 lessons of Learn (from zero to 3D raymarching and demo making)",
         `Make with AI: up to ${credits} credits a month and ${daily} requests a day (Qwen and other models)`,
       ],
       cta: "Sign in to start",
@@ -335,7 +335,6 @@ export const en: Dictionary = {
       yearlyNote: (perMonth: string, usd: string) => `Tax included · ${perMonth} a month · ${usd} / year outside Japan`,
       features: (credits: number, daily: number) => [
         "Everything in Free",
-        "All 30 lessons of Learn (through 3D raymarching and demo making)",
         `Make with AI: up to ${credits} credits a month and ${daily} requests a day`,
         "Choose Claude models (Sonnet, Opus and more) in Make with AI",
       ],
@@ -466,8 +465,7 @@ export const en: Dictionary = {
     title: "Learn shaders from zero",
     intro:
       "No programming experience needed. Start by painting a single color, work your way through noise, light and 3D raymarching, and finish by making and publishing your own demo. Every lesson comes with live code you can edit and exercises to try.",
-    stats: (lessons: number, hours: number, free: number) =>
-      `${lessons} lessons · about ${hours} hours · lessons 1–${free} free, no sign-in needed`,
+    stats: (lessons: number, hours: number) => `${lessons} lessons · about ${hours} hours · no sign-in needed`,
     start: "Start with lesson 1",
     continueFrom: (n: number) => `Continue (lesson ${n})`,
     review: "Start over from lesson 1",
@@ -512,15 +510,6 @@ export const en: Dictionary = {
       solution: "Solution",
       useSolution: "Put the solution in the editor",
       useSolutionHint: "Use Undo to get your own code back",
-    },
-    pro: {
-      title: "The rest of this lesson is on Pro",
-      description: (sections: number, price: string) =>
-        `The remaining ${sections} sections of this lesson are available on Pro. Pro is ${price} / month and unlocks all 30 lessons of Learn and higher limits for Make with AI.`,
-      cta: "See Pro",
-      login: "Already on Pro? Sign in",
-      freeNote: "Parts 1 and 2 (from 2D basics to noise and light) stay free to read.",
-      badgeHint: "This part is on Pro (the first section of each lesson is free to read)",
     },
   },
   preview: {

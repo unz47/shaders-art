@@ -274,7 +274,7 @@ export const ja = {
     loginToSee: "プランを見るにはログインしてください",
     currentPlan: "今のプラン",
     operator: "運営のアカウントなので、払わなくても Pro と同じに使えます",
-    freeSummary: "AI と作るは月 40 クレジット・1 日 20 回まで。Learn は第 1・2 部を読めます",
+    freeSummary: "AI と作るは月 40 クレジット・1 日 20 回まで",
     upgrade: "Pro にする",
     manage: "契約の管理(解約・支払い方法・領収書)",
     receipts: "領収書と支払い方法",
@@ -307,7 +307,7 @@ export const ja = {
     eyebrow: "Pricing",
     title: "作るのも、見るのも無料",
     intro:
-      "作品を見る・作る・投稿する・配信の背景に使うのは、ずっと無料です。AI と作るをたくさん使いたい人と、Learn を最後まで学びたい人のために Pro があります。",
+      "作品を見る・作る・投稿する・配信の背景に使うのは、ずっと無料です。Learn の全 30 回も無料です。AI と作るをたくさん使いたい人のために Pro があります。",
     testMode: "テスト中: 本当には請求されません",
     canceled: "購入を取りやめました。料金は請求されていません",
     billingInterval: "支払いの間隔",
@@ -323,11 +323,11 @@ export const ja = {
     redirecting: "支払いの画面に移動しています…",
     free: {
       name: "無料",
-      note: "ログインなしでも、作品を見る・作る・Learn の前半を読める",
+      note: "ログインなしでも、作品を見る・作る・Learn の全 30 回を学べる",
       features: (credits: number, daily: number) => [
         "作品を見る・作る・投稿する・書き出す",
         "配信の背景・壁紙・埋め込み(/stage)",
-        "Learn の第 1・2 部(18 回)",
+        "Learn の全 30 回(0 から 3D のレイマーチングとデモ作りまで)",
         `AI と作る: 月 ${credits} クレジット・1 日 ${daily} 回まで(Qwen などのモデル)`,
       ],
       cta: "ログインして始める",
@@ -340,7 +340,6 @@ export const ja = {
       yearlyNote: (perMonth: string, usd: string) => `税込 · 1 か月あたり ${perMonth} · 日本の外からは ${usd} / 年`,
       features: (credits: number, daily: number) => [
         "無料プランのすべて",
-        "Learn の全 30 回(3D のレイマーチングとデモ作りまで)",
         `AI と作る: 月 ${credits} クレジット・1 日 ${daily} 回まで`,
         "AI と作るで Claude(Sonnet・Opus など)も選べる",
       ],
@@ -471,8 +470,7 @@ export const ja = {
     title: "シェーダーを 0 から学ぶ",
     intro:
       "プログラミングが初めてでも大丈夫。1 色を出すところから始めて、ノイズ、光、3D のレイマーチングまで進み、最後に自分のデモを作って投稿します。どの回も、書き換えるとその場で動くコードと課題つきです。",
-    stats: (lessons: number, hours: number, free: number) =>
-      `全 ${lessons} 回 · およそ ${hours} 時間 · 第 ${free} 回まではログイン不要・無料`,
+    stats: (lessons: number, hours: number) => `全 ${lessons} 回 · およそ ${hours} 時間 · ログイン不要`,
     start: "第 1 回から始める",
     continueFrom: (n: number) => `続きから(第 ${n} 回)`,
     review: "もう一度第 1 回から",
@@ -517,15 +515,6 @@ export const ja = {
       solution: "見本",
       useSolution: "見本をエディタに入れる",
       useSolutionHint: "「元に戻す」で自分のコードに戻れます",
-    },
-    pro: {
-      title: "この先は Pro で読めます",
-      description: (sections: number, price: string) =>
-        `この回の残り ${sections} 節は、Pro の人が読めます。Pro は ${price} / 月で、Learn の全 30 回と、AI と作るの広い上限が使えます。`,
-      cta: "Pro について見る",
-      login: "Pro の人はログイン",
-      freeNote: "第 1・2 部(2D の基礎からノイズ・光まで)は、ずっと無料で読めます。",
-      badgeHint: "この部は Pro で読めます(最初の節は誰でも読めます)",
     },
   },
   preview: {
