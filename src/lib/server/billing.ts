@@ -135,9 +135,12 @@ export async function deductPackCredits(userId: string, amount: number, now = ne
   return unpaid;
 }
 
-/** 運営(AI_UNLIMITED_EMAILS)か。運営は払わなくても Pro と同じに使える */
+/**
+ * 運営(AI_UNLIMITED_EMAILS)か。運営は払わなくても Pro と同じに使える。
+ * 未確認のメールアドレスは信じない(lib/moderation の isAdmin と同じ理由)
+ */
 export function isOperator(session: Session, operatorEmails: readonly string[]): boolean {
-  return session.email !== null && operatorEmails.includes(session.email.toLowerCase());
+  return session.email !== null && session.emailVerified && operatorEmails.includes(session.email.toLowerCase());
 }
 
 export interface ViewerBilling {

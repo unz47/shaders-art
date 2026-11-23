@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderThumbnail } from "@/components/ShaderThumbnail";
 import type { WorkSummary } from "@/lib/works";

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Duration, Stack } from "aws-cdk-lib";
+import type { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import type { Table } from "aws-cdk-lib/aws-dynamodb";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { FunctionUrlAuthType } from "aws-cdk-lib/aws-lambda";
@@ -23,6 +24,18 @@ export interface NextjsSiteProps {
   claudeWorkspaceId?: string;
   /** AI を上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する(src/lib/server/aiUsage) */
   aiUnlimitedEmails?: string;
+  /** 運営のメールアドレス。カンマ区切り。通報の一覧・作品の非公開と削除ができる(src/lib/moderation) */
+  adminEmails?: string;
+  /**
+   * 独自ドメイン。Route 53 のホストゾーン(同じアカウント)を引き、CloudFront に別名と証明書を付けて、
+   * A / AAAA レコードを書き込む。証明書は us-east-1 にしか置けないので WafStack が作る
+   */
+  domain?: { domainName: string; certificate: ICertificate };
+  /**
+   * OpenNext のビルドを省き、すでにある .open-next を使う。GitHub Actions のデプロイでは、ビルドを
+   * AWS の認証情報の無い別のジョブで済ませて成果物を渡すので true にする(.github/workflows/deploy.yml)
+   */
+  skipBuild?: boolean;
 }
 
 // AI と作る で使う Bedrock の既定のモデル(利用者がパネルで選ばなかったとき)。リージョンは Lambda と同じ東京。
@@ -31,6 +44,9 @@ export interface NextjsSiteProps {
 // 使えるのは Sonnet 4.6 と Haiku 4.5 だけ。解除は AWS サポートに依頼する)、いまはコードに強い Qwen3 Coder にしている。
 // 呼び方の違いは src/lib/server/ai.ts。
 const AI_MODEL = "qwen.qwen3-coder-480b-a35b-v1:0";
+
+// OpenNext(Next.js を Lambda 用に組み直すツール)の版。.github/workflows/deploy.yml の OPEN_NEXT_VERSION と合わせる
+const OPEN_NEXT_VERSION = "3.10.4";
 
 // 日本国内で処理する推論プロファイル(jp.)の行き先。プロファイルを通すと、このどちらかで推論する
 const JP_PROFILE_REGIONS = ["ap-northeast-1", "ap-northeast-3"];
@@ -49,7 +65,7 @@ export class NextjsSite extends Construct {
 
   constructor(scope: Construct, id: string, props: NextjsSiteProps) {
     super(scope, id);
-    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails } = props;
+    const { table, webAclArn, auth, siteUrl, claudeWorkspaceId, aiUnlimitedEmails, adminEmails, domain, skipBuild } = props;
 
     // SSR Lambda のログ(アクセス解析の "pv" と、AI の原価の "ai-edit" を含む)は 13 か月残す(前年の同じ月と比べられるように)。
     // 指定しないと Lambda が自動で作るロググループは無期限になる。変えたら利用規約の「利用状況の記録」も直すこと
@@ -62,10 +78,13 @@ export class NextjsSite extends Construct {
       // コンストラクトの既定値と同じだが、意図を明示するために書いておく。
       // OpenNext v3系がNext.js 16に対応している。ルートのpackage.jsonには
       // OpenNextを入れない(ここで使うのはnpx経由のこのバージョンだけ)。
-      buildCommand: "npx --yes @opennextjs/aws@^3 build",
+      // 版は固定する(.github/workflows/deploy.yml のビルドのジョブと同じ版にすること)
+      buildCommand: `npx --yes @opennextjs/aws@${OPEN_NEXT_VERSION} build`,
+      skipBuild,
       // AI と作る(POST /api/ai/edit)の返答を少しずつ返すため、Function URL の応答をストリーミングにする。
       // OpenNext 側もストリーミング用のラッパーにする必要がある(リポジトリ直下の open-next.config.ts)。
       streaming: true,
+      ...(domain ? { domainProps: { domainName: domain.domainName, certificate: domain.certificate } } : {}),
       // ここに書いた値はビルド時と実行時(Lambda の環境変数)の両方に渡る。
       // NEXT_PUBLIC_ 以外のトークン値はビルド時には未解決の文字列になるので、
       // サーバー側のコードはモジュール読み込み時ではなくリクエスト時に読むこと。
@@ -87,6 +106,8 @@ export class NextjsSite extends Construct {
         ...(aiUnlimitedEmails ? { AI_UNLIMITED_EMAILS: aiUnlimitedEmails } : {}),
         // Pro の AI の上限は既定(月 600 クレジット・1 日 100 回)のまま。変えるなら AI_PRO_MONTHLY_CREDITS / AI_PRO_DAILY_REQUESTS
         STRIPE_SSM_PREFIX,
+        // 通報がこの人数に達したら自動で非公開にする既定は 3。変えるなら REPORT_AUTO_HIDE_THRESHOLD
+        ...(adminEmails ? { ADMIN_EMAILS: adminEmails } : {}),
       },
       overrides: {
         nextjsServer: {
@@ -116,10 +137,12 @@ export class NextjsSite extends Construct {
     // SSR Lambda(Route Handler)から作品を読む + 投稿(PutItem)とお気に入りを書ける。
     // お気に入りは、同じ表のお気に入りの行の追加・削除(PutItem・DeleteItem)と、作品の行の
     // favoriteCount の増減(UpdateItem)を 1 つのトランザクションで行う(src/lib/server/favorites.ts)。
-    // 作品の更新・削除の API はまだ無い。課金の行(src/lib/server/billing.ts)も同じ表に PutItem(条件付き)で書く。
+    // 通報・公開の切り替え・削除も同じ(src/lib/server/moderation.ts)。作品を消すときは、その作品への
+    // お気に入りと通報の行もまとめて消す(BatchWriteItem)。
+    // 課金の行(src/lib/server/billing.ts)も同じ表に PutItem(条件付き)で書く。
     const fn = this.nextjs.serverFunction.lambdaFunction;
     table.grantReadData(fn);
-    table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem");
+    table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:BatchWriteItem");
 
     // 課金: Stripe の鍵(SSM の SecureString)を読む。既定の AWS 管理キー(aws/ssm)で暗号化してあれば、KMS の許可は要らない
     {

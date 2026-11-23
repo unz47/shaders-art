@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/Link";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { COMMERCE_INFO } from "@/lib/billing/commerce";
 import { CREDIT_PACK, formatJpy, PRICES } from "@/lib/billing/plans";
 import { getLocale } from "@/lib/i18n/server";
+import { pageMetadata } from "@/lib/site";
 
 // /legal/commerce … 特定商取引法に基づく表記(issue #42)。有料プランを売るので必須。
 // 日本の法律の表記なので日本語が正文。英語で見ている人には同じ内容の英訳を出す。
@@ -12,12 +13,21 @@ import { getLocale } from "@/lib/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return {
-    title:
-      locale === "ja"
-        ? "特定商取引法に基づく表記 — shaders.art"
-        : "Notice under the Act on Specified Commercial Transactions — shaders.art",
-  };
+  return pageMetadata(
+    locale === "ja"
+      ? {
+          locale,
+          path: "/legal/commerce",
+          title: "特定商取引法に基づく表記",
+          description: "shaders.art の有料プラン(Pro)と追加クレジットの、販売者・値段・支払い・解約などの表記。",
+        }
+      : {
+          locale,
+          path: "/legal/commerce",
+          title: "Notice under the Act on Specified Commercial Transactions",
+          description: "Seller, prices, payment and cancellation for the shaders.art Pro plan and credit packs.",
+        },
+  );
 }
 
 const ON_REQUEST = { ja: "請求があった場合は、遅滞なく開示します", en: "Disclosed without delay upon request" };

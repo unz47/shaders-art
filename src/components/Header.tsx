@@ -1,8 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from "@/components/Link";
 import { useRef, useState } from "react";
 import { Avatar } from "@frost-ui/react/atoms/avatar";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
@@ -15,12 +13,12 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@frost-ui/react/organisms/menu";
+import { MoonIcon, SearchIcon } from "@/components/icons";
+import { MobileTabBar } from "@/components/MobileTabBar";
 import { SearchBox } from "@/components/SearchBox";
 import { avatarBackground, avatarInitial } from "@/lib/avatar";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize, usePagePath } from "@/lib/i18n/client";
 import { loginHref, type SessionUser, useSession } from "@/lib/useSession";
-import moonIcon from "@/icons/moon.svg";
-import searchIcon from "@/icons/search.svg";
 
 // 仕様: Figma "Home / Desktop 1440" > Header(node 10:245)
 // 全幅 sticky・高さ 64px・下線・左にロゴ+ナビ・右に検索/テーマ切り替え。検索は /works?q=… に送る
@@ -44,7 +42,8 @@ export function Header({
   searchQuery?: string;
 }) {
   // 作品詳細ページ(/s/...)と「すべての作品」(/works)も Gallery の一部として扱い、現在地の下線を出す
-  const pathname = usePathname();
+  const pathname = usePagePath();
+  const localize = useLocalize();
   const galleryActive = pathname === "/" || pathname.startsWith("/s/") || pathname.startsWith("/works");
   const active: Record<(typeof NAV)[number]["label"], boolean> = {
     Gallery: galleryActive,
@@ -72,81 +71,71 @@ export function Header({
   }
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center gap-sp-md border-b border-border-subtle bg-bg-base px-sp-md backdrop-blur sm:px-sp-xl">
-      <div className="flex items-center gap-sp-sm sm:gap-sp-xl">
-        <Link href="/" className="flex items-center gap-sp-xs pl-1 transition-colors hover:opacity-70">
-          <span className="h-[2px] w-3.5 bg-accent-default" />
-          <span className="font-serif text-lg italic tracking-tight text-text-primary">shaders.art</span>
-        </Link>
-        <nav className="hidden items-center gap-sp-md text-sm sm:flex">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`border-b-2 pb-1 text-text-primary transition-colors hover:text-accent-default ${
-                active[item.label] ? "border-accent-default" : "border-transparent"
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        {/* スマホ幅ではナビのリンクが入りきらずヘッダーがはみ出すので、メニューにまとめる */}
-        <Menu>
-          <MenuTrigger
-            aria-label={t.header.menu}
-            className="flex size-8 items-center justify-center rounded-control text-text-primary transition-colors hover:bg-bg-raised sm:hidden"
-          >
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-              <path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </MenuTrigger>
-          <MenuContent align="start">
+    <>
+      <header className="sticky top-0 z-10 flex h-16 items-center gap-sp-md border-b border-border-subtle bg-bg-base px-sp-md backdrop-blur sm:px-sp-xl">
+        <div className="flex items-center gap-sp-sm sm:gap-sp-xl">
+          <Link href="/" className="flex items-center gap-sp-xs pl-1 transition-colors hover:opacity-70">
+            <span className="h-[2px] w-3.5 bg-accent-default" />
+            <span className="font-serif text-lg italic tracking-tight text-text-primary">shaders.art</span>
+          </Link>
+          <nav className="hidden items-center gap-sp-md text-sm sm:flex">
             {NAV.map((item) => (
-              <MenuItem key={item.href} render={<Link href={item.href} />}>
-                <span className={active[item.label] ? "font-medium text-accent-default" : ""}>{item.label}</span>
-              </MenuItem>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`border-b-2 pb-1 text-text-primary transition-colors hover:text-accent-default ${
+                  active[item.label] ? "border-accent-default" : "border-transparent"
+                }`}
+              >
+                {item.label}
+              </Link>
             ))}
-          </MenuContent>
-        </Menu>
-      </div>
+          </nav>
+        </div>
 
-      <div className="ml-auto flex items-center gap-sp-sm">
-        {showSearch && (
-          <>
-            {/* 検索語が変わったら(「すべての作品を見る」で消したときなど)入力欄も合わせる */}
-            <div className="hidden w-60 md:block">
-              <SearchBox key={searchQuery} defaultValue={searchQuery} shortcut />
-            </div>
-            {/* 狭い画面では検索欄が場所を取ってヘッダーがはみ出すので、虫めがねだけにして /works の検索欄に送る */}
-            <Link
-              href="/works"
-              aria-label={t.header.search}
-              className="flex size-8 items-center justify-center rounded-control border border-border-subtle md:hidden"
-            >
-              <Image src={searchIcon} alt="" width={16} height={16} />
-            </Link>
-          </>
-        )}
-        <button
-          onClick={toggleTheme}
-          aria-pressed={theme === "dark"}
-          suppressHydrationWarning
-          className={`flex size-8 items-center justify-center rounded-control border border-border-subtle transition-colors ${
-            theme === "dark" ? "bg-bg-raised" : "bg-bg-base"
-          }`}
-        >
-          <Image src={moonIcon} alt={t.header.themeToggle} width={16} height={16} />
-        </button>
-        {session.status === "ready" && session.user && <AccountMenu user={session.user} />}
-        {session.status === "ready" && session.configured && !session.user && (
-          // Route Handler へのフルページ遷移なので <Link> ではなく <a>
-          <a href={loginHref(pathname)} className={buttonVariants({ variant: "primary", size: "sm" })}>
-            Sign in
-          </a>
-        )}
-      </div>
-    </header>
+        <div className="ml-auto flex items-center gap-sp-sm">
+          {showSearch && (
+            <>
+              {/* 検索語が変わったら(「すべての作品を見る」で消したときなど)入力欄も合わせる */}
+              <div className="hidden w-60 md:block">
+                <SearchBox key={searchQuery} defaultValue={searchQuery} shortcut />
+              </div>
+              {/* 狭い画面では検索欄が場所を取ってヘッダーがはみ出すので、虫めがねだけにして /works の検索欄に送る
+                  (スマホ幅では下のタブバーに Search があるので出さない) */}
+              <Link
+                href="/works"
+                aria-label={t.header.search}
+                className="hidden size-8 items-center justify-center rounded-control border border-border-subtle text-text-secondary transition-colors hover:text-text-primary sm:flex md:hidden"
+              >
+                <SearchIcon />
+              </Link>
+            </>
+          )}
+          {/* アイコンは文字色(currentColor)で描くので、ダークモードでも背景に沈まない。入っているときは月を塗る */}
+          <button
+            onClick={toggleTheme}
+            aria-pressed={theme === "dark"}
+            aria-label={t.header.themeToggle}
+            suppressHydrationWarning
+            className={`flex size-8 items-center justify-center rounded-control border border-border-subtle text-text-primary transition-colors hover:bg-bg-raised ${
+              theme === "dark" ? "bg-bg-raised" : "bg-bg-base"
+            }`}
+          >
+            <MoonIcon filled={theme === "dark"} />
+          </button>
+          {session.status === "ready" && session.user && <AccountMenu user={session.user} />}
+          {session.status === "ready" && session.configured && !session.user && (
+            // Route Handler へのフルページ遷移なので <Link> ではなく <a>
+            <a href={loginHref(localize(pathname))} className={buttonVariants({ variant: "primary", size: "sm" })}>
+              Sign in
+            </a>
+          )}
+        </div>
+      </header>
+      {/* スマホ幅ではナビのリンクが入りきらないので、画面の下のタブバーに出す。
+          header の backdrop-blur は中の fixed の基準になってしまうので、header の外に置く */}
+      <MobileTabBar />
+    </>
   );
 }
 

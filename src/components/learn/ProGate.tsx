@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
 import { formatJpy, PRICES } from "@/lib/billing/plans";
 import type { Dictionary } from "@/lib/i18n";

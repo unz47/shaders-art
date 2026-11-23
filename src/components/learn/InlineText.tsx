@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/Link";
 import type { ReactNode } from "react";
 
 // レッスンの文の中の記法を描く。使えるのは `コード`・**強調**・[リンク](/learn/…) の 3 つだけ(lib/learn/types)。

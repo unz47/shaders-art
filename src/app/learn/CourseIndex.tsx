@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
 import { Progress } from "@frost-ui/react/atoms/progress";
 import { ShaderThumbnail } from "@/components/ShaderThumbnail";

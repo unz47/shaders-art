@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { buttonVariants } from "@frost-ui/react/atoms/button";

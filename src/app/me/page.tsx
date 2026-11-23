@@ -6,7 +6,7 @@ import { MyWorks } from "./MyWorks";
 // 公開のプロフィールではない(作者名は投稿ごとの自己申告のまま)。中身はブラウザで取る(MyWorks)。
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getDictionary();
-  return { title: `${t.me.myWorks} — shaders.art`, robots: { index: false } };
+  return { title: `${t.me.myWorks}`, robots: { index: false } };
 }
 
 export default function MyWorksPage() {

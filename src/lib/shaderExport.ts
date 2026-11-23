@@ -17,8 +17,13 @@ export function exportFileName(title: string, suffix: string, ext: string): stri
   return `${base === "work" ? "shader" : base}${suffix ? `-${suffix}` : ""}.${ext}`;
 }
 
+/**
+ * 書き出しに入れるタイトル。タイトルは JS と GLSL の 1 行コメント(// …)にも入るので、改行
+ * (U+2028・U+2029 を含む)は空白にする。残すと、その後ろがコードとして動いてしまう
+ * (他人の作品を /edit で開いて書き出すと、その人が仕込んだコードが手元の HTML で動く)
+ */
 function displayTitle(title: string): string {
-  return title.trim() || "Untitled";
+  return title.replace(/[\r\n\u2028\u2029]+/g, " ").trim() || "Untitled";
 }
 
 /**

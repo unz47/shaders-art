@@ -144,6 +144,19 @@ Pro でない人には、題名・目標・この回の内容と最初の節だ�
 - playground の「/edit で開く」は、コードを `/edit#src=…`(`/stage` と同じ圧縮)で渡す。`/edit` はそれを開き、
   それまでの下書きは「元に戻す」で戻せる
 
+### 通報・非公開・削除
+
+- 作者は作品ページの「管理」から、公開・非公開の切り替えと削除ができる。削除すると、その作品へのお気に入りと通報も消える
+- ログインした人は、ほかの人の公開作品を「通報」できる(理由を選び、説明は任意。1 人 1 作品につき 1 回)。
+  別々の人からの通報が 3 件(`REPORT_AUTO_HIDE_THRESHOLD`)に達すると、運営が見るまで自動で非公開になる
+- 運営は `/admin` で、通報のあった作品と非公開にした作品を見て、非公開にする・問題なしとして戻す(通報を片付ける)。
+  作品ページの「管理」からはどの作品でも消せる。運営かどうかは `ADMIN_EMAILS`(カンマ区切り)で決め、
+  **確認済みの**メールアドレスだけを信じる(Cognito では未確認のまま別のアドレスに変えられるため。`AI_UNLIMITED_EMAILS` も同じ)
+- 非公開(作者が非公開にした・運営や通報で非公開になった)の作品は、作者と運営にしか見えない。一覧・検索・お気に入り・
+  `/stage` の slug の URL からも外れる
+- 本番では `pnpm cdk deploy --all -c adminEmails=you@example.com` で渡す。ローカルでは `.env.local` に `ADMIN_EMAILS`
+- 通報は作品と同じ表に `report#<作品の slug>#<ユーザー ID>` の行として入る。作品の行の `reportCount` が通報した人の数
+
 ## 課金(Pro と追加クレジット)
 
 issue #42 の設計。閲覧・編集・投稿・配信背景は無料のまま、原価のかかる AI と Learn の後半に値段を付ける。決済は Stripe。
@@ -227,6 +240,8 @@ filter msg like /^billing-/
 
 ## デプロイ
 
+main に入ると GitHub Actions(`.github/workflows/deploy.yml`)が `cdk deploy --all` する。手元から出すときは:
+
 ```sh
 cd infra
 pnpm install
@@ -249,9 +264,46 @@ Cognito のコールバック URL には本番のオリジンが要るが、Clou
 2. `infra/cdk.json` の `context.siteUrl` にその値を書く(`https://dxxxx.cloudfront.net`、末尾スラッシュ無し)
 3. もう一度 `cdk deploy --all` する
 
-CloudFront のドメインは作り直さない限り変わらない。独自ドメインを当てたら `siteUrl` をそれに差し替える。
+CloudFront のドメインは作り直さない限り変わらない。独自ドメインを当てるなら、下の手順のほうが早い(2 段階が要らない)。
 
 Cognito の確認メールは既定の送信元(1 日 50 通まで)で送っている。利用者が増えたら SES に切り替える。
+
+### 独自ドメイン(shaders-art.com)
+
+1. ドメインを買い、Route 53 にホストゾーンを用意する。Route 53 で買えばホストゾーンは自動で作られる。
+   ほかで買ったときは Route 53 にホストゾーンを作り、そのネームサーバー(NS)を買った先に登録する
+2. `infra/cdk.json` の `context.domainName` にドメインを書く(`shaders-art.com`。`https://` は付けない)。
+   `siteUrl` は空のままでよい(空なら `https://<domainName>` になる)
+3. `cdk deploy --all` する。`ShadersArtWafStack`(us-east-1)が証明書を作って DNS で検証し、
+   `ShadersArtStack` が CloudFront に別名と証明書を付け、A / AAAA レコードを書き込む
+
+証明書の検証は、ホストゾーンが引けるようになってから数分かかる(その間 `cdk deploy` は待つ)。
+ホストゾーンを引く(`HostedZone.fromLookup`)ので、デプロイには AWS の認証情報が要る。引いた結果は `infra/cdk.context.json` に残るが、
+AWS のアカウント ID が入るのでコミットしない(`.gitignore`。GitHub Actions のデプロイはそのつど引き直す)。
+
+### GitHub Actions からデプロイする(初回の準備)
+
+AWS には OIDC で入る(アクセスキーは置かない)。GitHub の OIDC プロバイダはアカウントにすでにある前提。
+
+1. 手元から、デプロイ用のロールを作る(1 回だけ。`--all` には入れていない)
+
+   ```sh
+   cd infra
+   pnpm cdk --app "node bin/github-deploy.ts" deploy ShadersArtGithubDeployStack
+   ```
+
+   ロール `shaders-art-github-deploy` に直接付けるのは CDK のブートストラップのロール(`cdk-hnb659fds-*`)を引き受ける権限だけ。
+   ただし CloudFormation を通して管理者と同じことができるので、信頼するのはこのリポジトリの environment `production` のジョブだけにし、
+   そのジョブで動くコードも絞っている(下)
+2. GitHub に environment `production` を作り、Deployment branches を `main` だけにする
+3. リポジトリの Variables に `AWS_DEPLOY_ROLE_ARN`(1 の出力 `DeployRoleArn`)、`ADMIN_EMAILS`、`AI_UNLIMITED_EMAILS`、
+   必要なら `CLAUDE_WORKSPACE_ID` を入れる(中身は `deploy.yml` の先頭のコメント)
+4. Actions の Deploy を手で起動する(workflow_dispatch)か、main に push する
+
+Deploy は 2 つのジョブに分かれている。`build` は AWS の認証情報を持たずに OpenNext でビルドし(`src/` のコードが動くのはここだけ)、
+`deploy` はその成果物を受け取って `cdk deploy -c skipBuild=true` だけをする。`deploy` で動くのは `infra/` と `src/lib/aiModels.ts` で、
+どちらも AI のレビューだけではマージされない(`.github/ai-review/human-required.txt`)。OpenNext の版は `deploy.yml` と
+`infra/lib/nextjs-site.ts` の両方で固定している。
 
 ## アクセス解析
 
@@ -259,7 +311,8 @@ Cognito の確認メールは既定の送信元(1 日 50 通まで)で送って�
 ページを開いた・移ったときにパスと参照元のドメインを `POST /api/pv` に送り、SSR Lambda が CloudWatch Logs に
 `"pv"` の行を出す(`src/lib/server/pageViews.ts`)。
 
-- 記録するもの: パス(クエリと `#` の後ろは除く)、よそのサイトから来たときのドメイン `ref`、言語 `locale`、
+- 記録するもの: パス(クエリと `#` の後ろ、日本語のページの頭の `/ja` は除く)、よそのサイトから来たときのドメイン `ref`、
+  見ていたページの言語 `locale`(2026-11-22 までは Cookie とブラウザの言語で決めた表示の言語)、
   `device`(mobile / desktop)、訪問者 `visitor`
 - `visitor` は「その月だけの秘密の値 + IP アドレス + User-Agent」のハッシュ。IP アドレスそのものは残さない。
   秘密の値は作品と同じ表の `pv-salt#2026-11` の行で、月が終わると TTL で消える。なので**訪問者の数は 1 か月の中でしか数えられない**
@@ -290,6 +343,11 @@ filter msg = "pv" and ispresent(ref)
 | stats count(*) as views, count_distinct(visitor) as visitors by ref
 | sort views desc
 
+# どの告知から来たか(告知のリンクに ?utm_source=x などを付けておく。X のアプリは参照元を送らないので、こちらで数える)
+filter msg = "pv" and ispresent(src)
+| stats count_distinct(visitor) as visitors by src
+| sort visitors desc
+
 # /stage(配信の背景・埋め込み)の使われ方
 filter msg = "pv" and path like /^\/stage/
 | stats count(*) as views, count_distinct(visitor) as visitors by bin(1d)
@@ -300,3 +358,16 @@ filter msg = "pv"
 ```
 
 `count_distinct` は件数が多いと近似値になる。
+
+## PR のレビュー
+
+PR を開くと、CI(`verify`)に加えてレビュー専用の Claude が差分を読み、結果を PR にコメントする(`ai-review`)。
+
+- OK なら `ai-review` が緑になる。要修正の指摘があるか、レビューが完走しなければ赤になる。提案だけなら緑のまま
+- `.github/`、`infra/`、依存の指定、認証まわりなどを触る PR は、AI が OK でも緑にならない。人間が読んでマージする
+  (対象は `.github/ai-review/human-required.txt`)
+- 動くのは、マージ先のブランチに `.github/workflows/ai-review.yml` がある PR だけ(いまは main 向け)
+- ドラフトの PR では動かず、ready for review にしたときに動く。fork からの PR はレビューせず常に赤になる(人間がマージする)
+- モデルと 1 回あたりの上限額は `.github/workflows/ai-review.yml` の `env` で変える
+- 要修正になったら、修正役の Claude が指摘を直して PR のブランチに push する(`ai-fix`。2 回まで。人間行きの PR は直さない)。
+  push には専用のトークン(Secrets の `AI_FIX_TOKEN`)を使う。`GITHUB_TOKEN` の push では CI とレビューが走り直さないため

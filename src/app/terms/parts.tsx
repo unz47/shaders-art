@@ -1,6 +1,7 @@
+import Link from "@/components/Link";
 import type { ReactNode } from "react";
 
-// 利用規約(日本語版 TermsJa・英語版 TermsEn)で共有する見た目の部品。
+// 利用規約(日本語版 TermsJa・英語版 TermsEn)とプライバシーポリシー(app/privacy)で共有する見た目の部品。
 
 // 固定ヘッダー(高さ 64px)の下に見出しが隠れないよう、#license などで飛んだときに余白を取る
 export function Section({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
@@ -26,6 +27,15 @@ export function P({ children }: { children: ReactNode }) {
 
 export function List({ children }: { children: ReactNode }) {
   return <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm leading-7 text-text-secondary">{children}</ul>;
+}
+
+/** サイトの中のページへのリンク(利用規約 ↔ プライバシーポリシーなど) */
+export function InternalLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link href={href} className="underline underline-offset-2 hover:text-text-primary">
+      {children}
+    </Link>
+  );
 }
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {

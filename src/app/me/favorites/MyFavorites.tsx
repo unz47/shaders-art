@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { buttonVariants } from "@frost-ui/react/atoms/button";
 import {
   EmptyState,
@@ -11,7 +11,7 @@ import {
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { WorkCard } from "@/components/WorkCard";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { useFavorites } from "@/lib/useFavorites";
 import { loginHref, useSession } from "@/lib/useSession";
 import { worksHref } from "@/lib/worksQuery";
@@ -22,6 +22,7 @@ export function MyFavorites() {
   const session = useSession();
   const favorites = useFavorites();
   const { t } = useI18n();
+  const localize = useLocalize();
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -43,7 +44,7 @@ export function MyFavorites() {
             {session.status === "ready" && session.configured && (
               <EmptyStateActions>
                 {/* Route Handler へのフルページ遷移なので <Link> ではなく <a> */}
-                <a href={loginHref("/me/favorites")} className={buttonVariants({ variant: "primary", size: "sm" })}>
+                <a href={loginHref(localize("/me/favorites"))} className={buttonVariants({ variant: "primary", size: "sm" })}>
                   Sign in
                 </a>
               </EmptyStateActions>

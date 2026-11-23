@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/Link";
 import { Badge } from "@frost-ui/react/atoms/badge";
 import { FavoriteButton, FavoriteCount } from "@/components/FavoriteButton";
 import { ShaderThumbnail } from "@/components/ShaderThumbnail";

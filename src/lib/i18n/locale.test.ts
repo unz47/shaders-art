@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localeFromAcceptLanguage, resolveLocale } from "./locale";
+import { localeFromAcceptLanguage, localePath, resolveLocale, splitLocalePath } from "./locale";
 
 describe("localeFromAcceptLanguage", () => {
   it.each([
@@ -34,5 +34,51 @@ describe("resolveLocale", () => {
     expect(resolveLocale({ cookie: undefined, acceptLanguage: "ja-JP,ja;q=0.9" })).toBe("ja");
     expect(resolveLocale({ cookie: "fr", acceptLanguage: "fr-FR" })).toBe("en");
     expect(resolveLocale({ cookie: null, acceptLanguage: null })).toBe("en");
+  });
+});
+
+describe("localePath", () => {
+  it.each([
+    ["/learn", "/ja/learn"],
+    ["/", "/ja"],
+    ["/?utm_source=x", "/ja?utm_source=x"],
+    ["/#top", "/ja#top"],
+    ["/works?sort=new", "/ja/works?sort=new"],
+    ["/terms#license", "/ja/terms#license"],
+  ])("日本語: %s → %s", (path, expected) => {
+    expect(localePath("ja", path)).toBe(expected);
+  });
+
+  it("英語はそのまま", () => {
+    expect(localePath("en", "/learn")).toBe("/learn");
+    expect(localePath("en", "/")).toBe("/");
+  });
+
+  it("サイトの外・/api・すでに言語の付いたパスは変えない", () => {
+    expect(localePath("ja", "https://example.com/")).toBe("https://example.com/");
+    expect(localePath("ja", "//example.com/")).toBe("//example.com/");
+    expect(localePath("ja", "/api/auth/login?returnTo=%2F")).toBe("/api/auth/login?returnTo=%2F");
+    expect(localePath("ja", "/ja/learn")).toBe("/ja/learn");
+    expect(localePath("ja", "#section-1")).toBe("#section-1");
+  });
+});
+
+describe("splitLocalePath", () => {
+  it.each([
+    ["/ja", "ja", "/"],
+    ["/ja/", "ja", "/"],
+    ["/ja/learn/raymarching", "ja", "/learn/raymarching"],
+    ["/learn", null, "/learn"],
+    ["/", null, "/"],
+    // /ja で始まるだけの別のパスは日本語にしない
+    ["/japan", null, "/japan"],
+  ])("%s → %s %s", (pathname, locale, path) => {
+    expect(splitLocalePath(pathname)).toEqual({ locale, path });
+  });
+
+  it("localePath と行き来できる", () => {
+    for (const path of ["/", "/learn", "/s/plasma", "/works?sort=new"]) {
+      expect(splitLocalePath(localePath("ja", path))).toEqual({ locale: "ja", path });
+    }
   });
 });

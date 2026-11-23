@@ -1,10 +1,10 @@
 import { findLicense, type LicenseId, licenseUrl } from "@/lib/submission";
-import { ExternalLink, H3, List, P, Section } from "./parts";
+import { ExternalLink, H3, InternalLink, List, P, Section } from "./parts";
 
 // 利用規約の日本語版(正文)。英語版(TermsEn)は翻訳で、食い違うときはこちらが優先する。
 // 文の途中で改行すると JSX が半角スペースを入れるので、日本語の文は 1 行に書く。
 
-const UPDATED = "2026 年 11 月 8 日";
+const UPDATED = "2026 年 11 月 15 日";
 
 /** クリエイティブ・コモンズの説明ページ(日本語) */
 const cc = (id: LicenseId) => licenseUrl(findLicense(id)!, "ja");
@@ -103,7 +103,10 @@ export function TermsJa() {
       <Section title="6. AI と作る">
         <List>
           <li>AI の提案は誤りを含むことがあります。提案を適用するかどうかは利用者が判断します。</li>
-          <li>依頼の内容と作品のコードは、提案を作るために AI の提供元(Amazon Web Services など)に送られます。</li>
+          <li>
+            依頼の内容と作品のコードは、提案を作るために AI の提供元(Amazon Web Services など)に送られます。送り先は
+            <InternalLink href="/privacy#processors">プライバシーポリシー</InternalLink>に書いています。
+          </li>
         </List>
       </Section>
 
@@ -148,6 +151,9 @@ export function TermsJa() {
         </List>
         <P>
           これらの記録に Cookie は使いません。ブラウザで「追跡しない」(Global Privacy Control または Do Not Track)を選んでいる場合、ページの記録は送りません。記録は運営者だけが利用し、広告には使わず、第三者に提供しません。記録は 13 か月ほどで消えます。
+        </P>
+        <P>
+          個人情報の扱い(集める情報、使う目的、開示や削除の依頼のしかたなど)は、<InternalLink href="/privacy">プライバシーポリシー</InternalLink>に書いています。
         </P>
       </Section>
 

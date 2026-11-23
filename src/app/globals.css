@@ -1,3 +1,17 @@
 @import "tailwindcss";
 @import "@frost-ui/tokens/theme.css";
 @source "../../node_modules/@frost-ui/react/src";
+
+/* スマホ幅で画面の下に出すタブバー(components/MobileTabBar)の高さ。sm(640px)以上では出さないので 0 */
+:root {
+  --tabbar-h: 0px;
+}
+@media (width < 40rem) {
+  :root {
+    --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  }
+  /* ページの最後(フッターなど)がタブバーの下に隠れないようにする */
+  body {
+    padding-bottom: var(--tabbar-h);
+  }
+}

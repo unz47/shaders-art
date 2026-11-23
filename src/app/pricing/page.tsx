@@ -2,15 +2,16 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
-import { getDictionary } from "@/lib/i18n/server";
+import { getDictionary, getLocale } from "@/lib/i18n/server";
+import { pageMetadata } from "@/lib/site";
 import { PricingPlans } from "./PricingPlans";
 
 // /pricing … 料金(issue #42)。無料と Pro を並べ、その下に追加クレジット。
 // 誰が見るか(ログイン・今のプラン)でボタンが変わるので、中身はブラウザで出す(PricingPlans)。
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getDictionary();
-  return { title: `${t.pricing.metaTitle} — shaders.art`, description: t.pricing.intro };
+  const [locale, t] = await Promise.all([getLocale(), getDictionary()]);
+  return pageMetadata({ locale, path: "/pricing", title: t.pricing.metaTitle, description: t.pricing.intro });
 }
 
 export default function PricingPage() {

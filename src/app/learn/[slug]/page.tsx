@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/Link";
 import { notFound } from "next/navigation";
 import { CodeBlock } from "@/components/CodeBlock";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
+import { JsonLd } from "@/components/JsonLd";
 import { InlineText } from "@/components/learn/InlineText";
 import { LessonExercise } from "@/components/learn/LessonExercise";
 import { LessonFinish } from "@/components/learn/LessonFinish";
@@ -11,8 +12,11 @@ import { LessonPlayground } from "@/components/learn/LessonPlayground";
 import { ProGate } from "@/components/learn/ProGate";
 import type { Dictionary } from "@/lib/i18n";
 import { getDictionary, getLocale } from "@/lib/i18n/server";
+import { lessonDescription } from "@/lib/learn/describe";
 import { type LocalizedBlock, type LocalizedLesson, localizeLesson, previewBlocks } from "@/lib/learn/localize";
 import { viewerHasPro } from "@/lib/server/viewer";
+import { pageMetadata } from "@/lib/site";
+import { lessonData } from "@/lib/structuredData";
 
 // /learn/{slug} … 学習の 1 回分。本文はサーバーで見る人の言語に絞って描き、書き換えられるコード(playground)と
 // 課題(exercise)だけをブラウザの部品にする。
@@ -23,9 +27,16 @@ import { viewerHasPro } from "@/lib/server/viewer";
 
 export async function generateMetadata({ params }: PageProps<"/learn/[slug]">): Promise<Metadata> {
   const { slug } = await params;
-  const lesson = localizeLesson(slug, await getLocale());
+  const [locale, t] = await Promise.all([getLocale(), getDictionary()]);
+  const lesson = localizeLesson(slug, locale);
   if (!lesson) return {};
-  return { title: `${lesson.title} — Learn — shaders.art`, description: lesson.summary };
+  return pageMetadata({
+    locale,
+    path: `/learn/${lesson.slug}`,
+    title: `${lesson.title} — Learn`,
+    description: lessonDescription(lesson, locale, t),
+    type: "article",
+  });
 }
 
 export default async function LessonPage({ params }: PageProps<"/learn/[slug]">) {
@@ -39,6 +50,7 @@ export default async function LessonPage({ params }: PageProps<"/learn/[slug]">)
 
   return (
     <div className="flex min-h-dvh flex-col">
+      <JsonLd data={lessonData(locale, t, lesson, lessonDescription(lesson, locale, t))} />
       <Header showSearch={false} />
       <main className="mx-auto w-full max-w-7xl flex-1 px-sp-xl pt-8">
         <div className="xl:grid xl:grid-cols-[14rem_minmax(0,1fr)] xl:gap-14">
@@ -96,7 +108,7 @@ function Outline({ lesson, t }: { lesson: LocalizedLesson; t: Dictionary }) {
       <ol className="flex flex-col gap-1.5 text-sm">
         {lesson.outline.map((item, i) => (
           <li key={item.id} className="flex gap-2">
-            <span className="w-5 shrink-0 font-mono text-xs leading-5 text-text-muted">{String(i + 1).padStart(2, "0")}</span>
+            <span className="w-5 shrink-0 font-mono text-xs leading-5 text-text-muted">{String(i + 1).padStart(2, "0")}</span>{" "}
             <a href={`#${item.id}`} className="leading-5 text-text-secondary transition-colors hover:text-text-primary">
               {item.text}
             </a>
@@ -154,7 +166,8 @@ function Block({ block, t }: { block: LocalizedBlock; t: Dictionary }) {
       const number = block.id.replace("section-", "").padStart(2, "0");
       return (
         <h2 id={block.id} className="mt-8 flex max-w-[42rem] scroll-mt-24 items-baseline gap-3 text-xl font-medium text-text-primary">
-          <span className="font-mono text-sm text-text-muted">{number}</span>
+          {/* 番号と見出しの間の空白: 画面では gap で空けるが、検索エンジンなどが文字だけで読むと「01Shapes」とつながる */}
+          <span className="font-mono text-sm text-text-muted">{number}</span>{" "}
           <span>{block.text}</span>
         </h2>
       );

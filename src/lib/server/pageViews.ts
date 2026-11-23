@@ -20,6 +20,11 @@ export interface PageView {
   path: string;
   /** よそのサイトから来たときの、そのサイトのドメイン。サイトの中の移動や直接開いたときは null */
   ref: string | null;
+  /**
+   * 告知のリンクに付けた ?utm_source=…(x・zenn・reddit など)。どの告知から来たかを数える。
+   * X のアプリなどは参照元を送らないので、ref だけでは分からない。付いていなければ null
+   */
+  src: string | null;
 }
 
 // ログインの行き帰り(Cognito のログイン画面)は参照元として数えない
@@ -35,12 +40,18 @@ export function parsePageView(body: string): PageView | null {
     return null;
   }
   if (typeof data !== "object" || data === null) return null;
-  const { path, ref } = data as Record<string, unknown>;
+  const { path, ref, src } = data as Record<string, unknown>;
   if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) return null;
   // 末尾の / はそろえる(作品へのリンクは /s/{slug}/ で、開くと /s/{slug} になる)
   const clean = path.replace(/[?#].*$/s, "").slice(0, MAX_PATH_LENGTH).replace(/(.)\/+$/, "$1");
   if (clean.startsWith("/api/") || clean.startsWith("/_next/")) return null;
-  return { path: clean, ref: refHost(ref) };
+  return { path: clean, ref: refHost(ref), src: campaignSource(src) };
+}
+
+function campaignSource(src: unknown): string | null {
+  if (typeof src !== "string") return null;
+  const value = src.trim().toLowerCase();
+  return /^[a-z0-9._-]{1,40}$/.test(value) ? value : null;
 }
 
 function refHost(ref: unknown): string | null {

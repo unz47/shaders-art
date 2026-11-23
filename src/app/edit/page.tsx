@@ -48,7 +48,7 @@ import {
 } from "@/lib/submission";
 import { commit, createHistory, type EditHistory, redo, undo } from "@/lib/editHistory";
 import type { Dictionary } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { renderGif } from "@/lib/renderGif";
 import { RenderError, renderStillPng } from "@/lib/renderStill";
 import { buildStandaloneHtml, downloadBlob, exportFileName, toShadertoy } from "@/lib/shaderExport";
@@ -325,6 +325,7 @@ export default function EditPage() {
 
   const session = useSession();
   const router = useRouter();
+  const localize = useLocalize();
   const [submitOpen, setSubmitOpen] = useState(false);
   const [form, setForm] = useState<SubmitForm>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -664,7 +665,7 @@ export default function EditPage() {
 
   function goToLogin() {
     writeDraft(code);
-    window.location.assign(loginHref("/edit"));
+    window.location.assign(loginHref(localize("/edit")));
   }
 
   function handleProceed() {
@@ -695,7 +696,7 @@ export default function EditPage() {
       if (result.ok) {
         writeDraft(null);
         writeTitle(null);
-        router.push(`/s/${result.slug}`);
+        router.push(localize(`/s/${result.slug}`));
         return;
       }
       // セッションが切れていたら、下書きを残したままログインし直してもらう
@@ -712,8 +713,11 @@ export default function EditPage() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
+    // 高さはスマホ幅の下のタブバー(--tabbar-h)の分を引く
+    <div className="flex h-[calc(100dvh-var(--tabbar-h))] flex-col overflow-hidden">
       <Header showSearch={false} />
+      {/* 画面には出さない見出し(読み上げと検索エンジン向け)。題名の欄は投稿する作品の題名なので、見出しにはしない */}
+      <h1 className="sr-only">{t.meta.editTitle}</h1>
       <div ref={columnsRef} className="flex flex-1 overflow-hidden">
         {/* 左: コード(編集可能) */}
         <div ref={codeColumnRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -1011,7 +1015,7 @@ export default function EditPage() {
                 <span className="flex-1">{t.edit.dialog.reuseLegend}</span>
                 {/* ダイアログを閉じずに読めるよう別のタブで開く(下書きは残る) */}
                 <a
-                  href="/terms#license"
+                  href={localize("/terms#license")}
                   target="_blank"
                   rel="noopener"
                   className="text-xs font-normal text-text-secondary underline underline-offset-2 hover:text-text-primary"

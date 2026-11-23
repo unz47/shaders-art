@@ -1,11 +1,10 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { type MouseEvent, useState } from "react";
 import { Button } from "@frost-ui/react/atoms/button";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { HeartIcon } from "@/components/HeartIcon";
-import { useI18n } from "@/lib/i18n/client";
+import { useI18n, useLocalize, usePagePath } from "@/lib/i18n/client";
 import { favoriteCountOf, toggleFavorite, useFavorites } from "@/lib/useFavorites";
 import { loginHref, useSession } from "@/lib/useSession";
 import type { WorkSummary } from "@/lib/works";
@@ -24,7 +23,8 @@ export function FavoriteButton({
 }) {
   const session = useSession();
   const favorites = useFavorites();
-  const pathname = usePathname();
+  const pathname = usePagePath();
+  const localize = useLocalize();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const { t } = useI18n();
@@ -40,7 +40,7 @@ export function FavoriteButton({
     event.stopPropagation();
     if (session.status !== "ready" || !session.user) {
       // Route Handler へのフルページ遷移
-      window.location.assign(loginHref(pathname));
+      window.location.assign(loginHref(localize(pathname)));
       return;
     }
     if (favorites.status !== "ready" || busy) return;

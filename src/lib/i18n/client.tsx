@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { createContext, type ReactNode, useCallback, useContext, useMemo } from "react";
-import { dictionaryFor, type Dictionary, LOCALE_COOKIE, type Locale } from "./index";
+import { dictionaryFor, type Dictionary, LOCALE_COOKIE, type Locale, localePath, splitLocalePath } from "./index";
 
 // ブラウザ側で文言を引く。言語はルートレイアウトがサーバーで決めて I18nProvider に渡す
 // (ハイドレーションで食い違わないよう、ブラウザでは決め直さない)。
@@ -21,14 +21,25 @@ export function useI18n(): { locale: Locale; t: Dictionary } {
   return value;
 }
 
-/** 言語を切り替える。Cookie に 1 年覚えておき、サーバーで描く部分(タイトルや html の lang)も描き直す */
+/** サイトの中のパスを、いま見ている言語の URL にする(/learn → 日本語なら /ja/learn)。リンクは components/Link が使う */
+export function useLocalize(): (path: string) => string {
+  const { locale } = useI18n();
+  return useCallback((path: string) => localePath(locale, path), [locale]);
+}
+
+/** いまのページのパスから言語(頭の /ja)を外したもの。ナビの現在地の判定などに使う */
+export function usePagePath(): string {
+  return splitLocalePath(usePathname()).path;
+}
+
+/**
+ * 言語を切り替える。Cookie に 1 年覚えておき(頭の無い URL に来たときの行き先になる)、同じページの
+ * その言語の URL を開き直す。html の lang やルートレイアウトの文言も変わるので、画面の中の移動ではなく読み込み直す
+ */
 export function useSetLocale(): (locale: Locale) => void {
-  const router = useRouter();
-  return useCallback(
-    (locale: Locale) => {
-      document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
-      router.refresh();
-    },
-    [router],
-  );
+  return useCallback((locale: Locale) => {
+    document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+    const { path } = splitLocalePath(window.location.pathname);
+    window.location.assign(localePath(locale, path) + window.location.search + window.location.hash);
+  }, []);
 }

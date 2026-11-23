@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import Link from "@/components/Link";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { getLocale } from "@/lib/i18n/server";
+import { pageMetadata } from "@/lib/site";
 import { TermsEn } from "./TermsEn";
 import { TermsJa } from "./TermsJa";
 
@@ -13,7 +14,16 @@ import { TermsJa } from "./TermsJa";
 // 権利に関わる文書なので、本番で公開する前に専門家に確認してもらうこと(Notion の未解決の課題にも記載)。
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return { title: locale === "ja" ? "利用規約 — shaders.art" : "Terms of Service — shaders.art" };
+  return pageMetadata(
+    locale === "ja"
+      ? { locale, path: "/terms", title: "利用規約", description: "shaders.art の利用規約。作品の投稿とライセンス、AI の機能、通報と非公開の扱いなど。" }
+      : {
+          locale,
+          path: "/terms",
+          title: "Terms of Service",
+          description: "The terms for using shaders.art: posting works and their licenses, the AI features, and how reports and hiding work.",
+        },
+  );
 }
 
 export default async function TermsPage() {

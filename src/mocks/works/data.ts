@@ -15,6 +15,8 @@ export interface MockWork {
   collected: boolean;
   /** お気に入りにした人の数(lib/server/favorites が増減させる)。まだ誰も押していなければ無い */
   favoriteCount?: number;
+  /** 運営か通報で非公開になっている(lib/moderation)。作者と運営にだけ見える。公開の一覧には出ない */
+  hiddenBy?: "operator" | "reports";
   createdAt: string;
   description: string;
   tags: string[];

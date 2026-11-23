@@ -1,5 +1,20 @@
-# main への push で GitHub Pages に静的エクスポートを配置する。
-# カスタムドメイン(shaders.art)を当てるまでは /shaders-art 配下で配信されるので BASE_PATH を渡す。
+# main への push で、本番(AWS)に cdk deploy する。
+# AWS には OIDC で入る。引き受けるロールは infra/bin/github-deploy.ts が作る(README の「GitHub Actions からデプロイする」)。
+#
+# ジョブを 2 つに分けている:
+#   build  … Next.js を OpenNext で Lambda 用に組み立てる。src/ のコードが動くので、AWS の認証情報を持たせない
+#   deploy … 組み立てた .open-next を受け取り、ビルドを省いて cdk deploy だけをする。ここで動くのは infra/ と
+#            src/lib/aiModels.ts だけで、どちらも AI のレビューだけではマージされない(.github/ai-review/human-required.txt)
+# デプロイのロールは CloudFormation を通して管理者と同じことができるので、認証情報のあるところで動くコードを絞っている。
+#
+# リポジトリの Variables(Settings → Secrets and variables → Actions → Variables)に入れておくもの:
+#   AWS_DEPLOY_ROLE_ARN   必須。ShadersArtGithubDeployStack の出力 DeployRoleArn
+#   ADMIN_EMAILS          運営のメールアドレス(カンマ区切り)。通報の一覧・作品の非公開と削除ができる
+#   AI_UNLIMITED_EMAILS   AI を上限なしで使える人のメールアドレス(カンマ区切り)
+#   CLAUDE_WORKSPACE_ID   Claude Platform on AWS のワークスペース ID(wrkspc_…)。無ければ空
+# 公開リポジトリなので、メールアドレスは cdk.json に書かずにここから渡す。
+#
+# @frost-ui/* が npm 公開されるまでは、CI と同じく隣に design-system を checkout して link: を成立させる。
 name: Deploy
 
 on:
@@ -9,16 +24,20 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# デプロイの途中で次のデプロイを始めない(CloudFormation の更新が重なると片方が失敗する)。止めずに順番に待つ
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  # infra/lib/nextjs-site.ts の OPEN_NEXT_VERSION と同じにする
+  OPEN_NEXT_VERSION: 3.10.4
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: shaders-art
@@ -26,11 +45,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: shaders-art
+          persist-credentials: false
 
       - uses: actions/checkout@v4
         with:
           repository: unz47/design-system
           path: design-system
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
@@ -42,23 +63,110 @@ jobs:
           cache: pnpm
           cache-dependency-path: shaders-art/pnpm-lock.yaml
 
-      - run: pnpm install --frozen-lockfile
+      - name: design-system の依存を入れる
+        run: pnpm install --frozen-lockfile
+        working-directory: design-system
 
-      - name: 静的ビルド
-        run: pnpm build
+      # node_modules を平らに(hoisted)入れる。pnpm の既定(シンボリックリンク)のままだと、Lambda 用の
+      # バンドルの node_modules/next などがリンクになり、成果物の受け渡しや Lambda の zip でリンクが実体に
+      # 置き換わったときに、リンク先の隣にあった依存(@swc/helpers など)が見つからなくなる(初回の本番で起きた)
+      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
+
+      # PR では CI が通っているが、main に入った形でももう一度確かめてから出す
+      - name: テスト
+        run: pnpm test
+
+      # cdk deploy の中で走るビルドと同じもの。ビルド時に埋め込まれる環境変数は NEXT_PUBLIC_API_BASE だけ
+      # (ほかは Lambda の環境変数として実行時に読む。infra/lib/nextjs-site.ts の environment)
+      - name: OpenNext でビルド
+        run: npx --yes "@opennextjs/aws@${OPEN_NEXT_VERSION}" build
         env:
-          BASE_PATH: /shaders-art
+          NEXT_PUBLIC_API_BASE: /api
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: バンドルにシンボリックリンクが無いか
+        run: |
+          links=$(find .open-next -type l | head -5)
+          if [ -n "$links" ]; then
+            echo "::error::.open-next にシンボリックリンクがある(Lambda で依存が見つからなくなる): $links"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
         with:
-          path: shaders-art/out
+          name: open-next
+          path: shaders-art/.open-next
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    environment: production
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: shaders-art/infra
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: デプロイ用のロールが設定されているか
+        env:
+          ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          if [ -z "$ROLE" ]; then
+            echo '::error::リポジトリの Variables に AWS_DEPLOY_ROLE_ARN がありません。README の「GitHub Actions からデプロイする」を見てください。'
+            exit 1
+          fi
+        working-directory: .
+
+      - uses: actions/checkout@v4
+        with:
+          path: shaders-art
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: shaders-art/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: shaders-art/.nvmrc
+          cache: pnpm
+          cache-dependency-path: shaders-art/infra/pnpm-lock.yaml
+
+      # infra の依存だけを入れる(アプリの依存は入れない。認証情報のあるジョブで動くものを減らす)
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: open-next
+          path: shaders-art/.open-next
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: cdk deploy
+        env:
+          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          AI_UNLIMITED_EMAILS: ${{ vars.AI_UNLIMITED_EMAILS }}
+          CLAUDE_WORKSPACE_ID: ${{ vars.CLAUDE_WORKSPACE_ID }}
+        run: |
+          pnpm cdk deploy --all --require-approval never --progress events \
+            --outputs-file cdk-outputs.json \
+            -c skipBuild=true \
+            -c "adminEmails=$ADMIN_EMAILS" \
+            -c "aiUnlimitedEmails=$AI_UNLIMITED_EMAILS" \
+            -c "claudeWorkspaceId=$CLAUDE_WORKSPACE_ID"
+
+      # デプロイ用のロールは CloudFormation を直接読めないので、cdk が書き出した出力から読む
+      - name: 本番の URL
+        run: |
+          url=$(jq -r '.ShadersArtStack.SiteUrl' cdk-outputs.json)
+          echo "本番: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' "$url/api/auth/me")
+          echo "GET /api/auth/me → $code" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$code" = 200 ] || { echo "::error::本番の API が $code を返した"; exit 1; }

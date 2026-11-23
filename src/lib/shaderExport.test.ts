@@ -24,6 +24,14 @@ describe("toShadertoy", () => {
 });
 
 describe("buildStandaloneHtml", () => {
+  it("タイトルの改行(U+2028・U+2029 を含む)は空白にし、コメントの外に出さない", () => {
+    const title = "Rings\nalert(1)\u2028fetch(1)\r\nx";
+    const html = buildStandaloneHtml(SOURCE, { title });
+    expect(html).toContain("// Rings alert(1) fetch(1) x — exported from shaders.art");
+    expect(html).not.toMatch(/^alert\(1\)/m);
+    expect(toShadertoy(SOURCE, { title })).toContain("// Rings alert(1) fetch(1) x");
+  });
+
   it("コードを JSON 文字列として埋め込み、</script> で HTML が壊れないようにする", () => {
     const html = buildStandaloneHtml(`${SOURCE}\n// </script><b>`, { title: "<Rings>" });
     expect(html).toContain("<title>&lt;Rings&gt; — shaders.art</title>");

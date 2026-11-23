@@ -7,7 +7,7 @@ import { MyBilling } from "./MyBilling";
 // Stripe Checkout から戻ってくる先でもある(?checkout=success&session_id=…)。
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getDictionary();
-  return { title: `${t.billing.title} — shaders.art`, robots: { index: false } };
+  return { title: t.billing.title, robots: { index: false } };
 }
 
 export default function MyBillingPage() {

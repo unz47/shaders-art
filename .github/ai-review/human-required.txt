@@ -1,0 +1,26 @@
+# ここに当たるファイルを触る PR は、AI が OK を出しても ai-review を緑にしない。
+# 人間が読んでからマージする。1 行 1 パターン(拡張正規表現、リポジトリルートからのパス)。
+
+# CI / デプロイと、このレビューの仕組みそのもの
+^\.github/
+
+# レビュー役とコーディングエージェントが読む指示
+^(CLAUDE|AGENTS)\.md$
+^\.claude/
+
+# インフラ。src/lib/aiModels.ts は infra/lib/nextjs-site.ts が読み込むので、デプロイのジョブ(AWS の認証情報あり)で動く
+^infra/
+^src/lib/aiModels\.ts$
+
+# ビルドの設定(本番に出るコードの作り方が変わる)
+^(next|open-next)\.config\.ts$
+
+# 依存とランタイムの指定
+^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.nvmrc)$
+
+# 環境変数
+^\.env
+
+# 認証
+^src/app/api/auth/
+^src/lib/server/(oauth|session)\.
