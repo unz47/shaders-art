@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiCostUsd, type AiUsageStatus, creditsForCost, quotaBlock, quotaMessage, usagePeriods } from "./aiQuota";
+import { aiCostUsd, type AiUsageStatus, creditsAvailable, creditsForCost, quotaBlock, quotaMessage, usagePeriods } from "./aiQuota";
 import { dictionaryFor } from "./i18n";
 
 describe("aiCostUsd / creditsForCost", () => {
@@ -37,8 +37,16 @@ describe("usagePeriods", () => {
 });
 
 describe("quotaBlock", () => {
-  const status = (credits: number, requests: number, unlimited = false, freePoolExhausted = false): AiUsageStatus => ({
+  const status = (
+    credits: number,
+    requests: number,
+    unlimited = false,
+    freePoolExhausted = false,
+    packCredits = 0,
+  ): AiUsageStatus => ({
+    plan: "free",
     credits: { used: credits, limit: 40 },
+    packCredits,
     requestsToday: { used: requests, limit: 20 },
     unlimited,
     freePoolExhausted,
@@ -52,6 +60,15 @@ describe("quotaBlock", () => {
     expect(quotaBlock(status(0, 20))).toBe("daily");
   });
 
+  it("月の枠を使い切っても、追加クレジットが残っていれば止めない", () => {
+    expect(quotaBlock(status(40, 0, false, false, 1))).toBeNull();
+    expect(quotaBlock(status(45, 0, false, false, 0))).toBe("monthly");
+  });
+
+  it("1 日の回数の上限は、追加クレジットがあっても止める", () => {
+    expect(quotaBlock(status(40, 20, false, false, 500))).toBe("daily");
+  });
+
   it("無料の人全体の上限に達したら、1 人あたりの残りがあっても止める", () => {
     expect(quotaBlock(status(0, 0, false, true))).toBe("pool");
   });
@@ -63,5 +80,27 @@ describe("quotaBlock", () => {
   it("止まった理由と、いつ戻るか(日本時間の 12 月 1 日)を出す", () => {
     expect(quotaMessage("pool", status(0, 0, false, true), dictionaryFor("ja"))).toContain("12月1日");
     expect(quotaMessage("monthly", status(40, 0), dictionaryFor("en"))).toContain("December 1");
+  });
+});
+
+describe("creditsAvailable", () => {
+  const base: AiUsageStatus = {
+    plan: "pro",
+    credits: { used: 590, limit: 600 },
+    packCredits: 0,
+    requestsToday: { used: 0, limit: 100 },
+    unlimited: false,
+    freePoolExhausted: false,
+    monthResetsAt: "",
+    dayResetsAt: "",
+  };
+
+  it("今月の枠の残りと追加クレジットを足す", () => {
+    expect(creditsAvailable(base)).toBe(10);
+    expect(creditsAvailable({ ...base, packCredits: 500 })).toBe(510);
+  });
+
+  it("枠を超えて使っていても、マイナスにはしない", () => {
+    expect(creditsAvailable({ ...base, credits: { used: 620, limit: 600 }, packCredits: 480 })).toBe(480);
   });
 });

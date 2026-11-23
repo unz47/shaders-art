@@ -51,6 +51,11 @@ const OPEN_NEXT_VERSION = "3.10.4";
 // 日本国内で処理する推論プロファイル(jp.)の行き先。プロファイルを通すと、このどちらかで推論する
 const JP_PROFILE_REGIONS = ["ap-northeast-1", "ap-northeast-3"];
 
+// 課金(Stripe)の秘密鍵と webhook の署名の鍵を置く SSM パラメータストアの場所(SecureString、src/lib/server/stripe.ts)。
+// CloudFormation のテンプレートに鍵を残さないよう、CDK では作らず、README の「課金」の手順で手で入れる。
+// 入っていなければ課金は「準備中」になるだけで、ほかは動く。
+const STRIPE_SSM_PREFIX = "/shaders-art/stripe";
+
 // SSR(OpenNext)でNext.jsアプリ全体(ページ+API)をデプロイする。
 // cdk-nextjs-standaloneのNextjsコンストラクトが、S3(静的アセット)+
 // Lambda Function URL(SSR/API) + CloudFrontの配線を内部でやってくれる
@@ -99,6 +104,8 @@ export class NextjsSite extends Construct {
         // AI の上限は既定(1 人あたり月 40 クレジット・1 日 20 回、無料の人全体で月 ¥3,000)のまま。
         // 変えるなら AI_MONTHLY_CREDITS / AI_DAILY_REQUESTS / AI_FREE_MONTHLY_BUDGET_YEN
         ...(aiUnlimitedEmails ? { AI_UNLIMITED_EMAILS: aiUnlimitedEmails } : {}),
+        // Pro の AI の上限は既定(月 600 クレジット・1 日 100 回)のまま。変えるなら AI_PRO_MONTHLY_CREDITS / AI_PRO_DAILY_REQUESTS
+        STRIPE_SSM_PREFIX,
         // 通報がこの人数に達したら自動で非公開にする既定は 3。変えるなら REPORT_AUTO_HIDE_THRESHOLD
         ...(adminEmails ? { ADMIN_EMAILS: adminEmails } : {}),
       },
@@ -132,9 +139,21 @@ export class NextjsSite extends Construct {
     // favoriteCount の増減(UpdateItem)を 1 つのトランザクションで行う(src/lib/server/favorites.ts)。
     // 通報・公開の切り替え・削除も同じ(src/lib/server/moderation.ts)。作品を消すときは、その作品への
     // お気に入りと通報の行もまとめて消す(BatchWriteItem)。
+    // 課金の行(src/lib/server/billing.ts)も同じ表に PutItem(条件付き)で書く。
     const fn = this.nextjs.serverFunction.lambdaFunction;
     table.grantReadData(fn);
     table.grant(fn, "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:BatchWriteItem");
+
+    // 課金: Stripe の鍵(SSM の SecureString)を読む。既定の AWS 管理キー(aws/ssm)で暗号化してあれば、KMS の許可は要らない
+    {
+      const { region, account } = Stack.of(this);
+      fn.addToRolePolicy(
+        new PolicyStatement({
+          actions: ["ssm:GetParameters"],
+          resources: [`arn:aws:ssm:${region}:${account}:parameter${STRIPE_SSM_PREFIX}/*`],
+        }),
+      );
+    }
 
     // AI と作る: anthropic.* の Claude は Messages API(bedrock-mantle)、jp.anthropic.* の Claude は InvokeModel、
     // それ以外は Converse API(どちらも bedrock-runtime)で呼ぶ。

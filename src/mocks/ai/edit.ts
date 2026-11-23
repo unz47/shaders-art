@@ -54,7 +54,9 @@ export const aiModels = http.get("/api/ai/models", () => HttpResponse.json({ mod
 export const aiUsage = http.get("/api/ai/usage", () => {
   const periods = usagePeriods(new Date());
   return HttpResponse.json({
+    plan: "free",
     credits: { used: 12, limit: DEFAULT_MONTHLY_CREDITS },
+    packCredits: 0,
     requestsToday: { used: 3, limit: DEFAULT_DAILY_REQUESTS },
     unlimited: false,
     freePoolExhausted: false,

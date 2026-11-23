@@ -118,6 +118,14 @@ export const AI_MODELS: readonly AiModel[] = [
 /** 何も選んでいないときのモデル */
 export const DEFAULT_AI_MODEL_ID = "qwen.qwen3-coder-480b-a35b-v1:0";
 
+/**
+ * Pro(issue #42)だけが選べるモデルか。Claude は 1 回の原価が Qwen の 5〜20 倍なので、無料の人には出さない
+ * (選べないことは AI 欄で見せて、料金ページに案内する)
+ */
+export function requiresPro(model: AiModel): boolean {
+  return model.via !== "bedrock";
+}
+
 export function findAiModel(id: string | null | undefined): AiModel | undefined {
   return AI_MODELS.find((model) => model.id === id);
 }

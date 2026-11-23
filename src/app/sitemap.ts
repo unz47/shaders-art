@@ -10,7 +10,7 @@ import { absoluteUrl } from "@/lib/site";
 // 作品は表から読むので、ビルド時ではなくリクエストのたびに作る(読みに来るのは検索エンジンだけで回数は少ない)
 export const dynamic = "force-dynamic";
 
-const STATIC_PATHS = ["/", "/works", "/edit", "/learn", "/terms", "/privacy"];
+const STATIC_PATHS = ["/", "/works", "/edit", "/learn", "/pricing", "/terms", "/privacy", "/legal/commerce"];
 
 function entries(path: string, lastModified?: string): MetadataRoute.Sitemap {
   const languages = Object.fromEntries(LOCALES.map((locale) => [locale, absoluteUrl(locale, path)]));

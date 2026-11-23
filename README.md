@@ -86,6 +86,7 @@ Claude(Haiku 5.5 / Sonnet 5.5 / Opus 5.5)は、Bedrock ではなく **Claude Pla
 #### AI の使用量と上限
 
 1 人あたり **月 40 クレジット**と **1 日 20 回**まで(issue #43。日本時間の月初・0 時に戻る)。
+Pro は **月 600 クレジット**と **1 日 100 回**で、Claude のモデルも選べる。枠を使い切ったら追加クレジットから引く(下の「課金」)。
 クレジットは実際の原価で減る(1 クレジット = 原価 ¥0.5 相当。1 ドル = 150 円で換算。`src/lib/aiQuota.ts`)。
 Qwen3 Coder ならおよそ 1 回 1、Claude Sonnet 4.6 なら 2〜14。途中で切れた・断られた依頼も、使ったトークンの分は数える。
 利用者が途中で止めた依頼は、使ったトークンの数が届かないので、多めに見積もった分を数える(最初の反応からの時間 × 1 秒 100 トークン)。
@@ -98,6 +99,7 @@ Qwen3 Coder ならおよそ 1 回 1、Claude Sonnet 4.6 なら 2〜14。途中�
 |---|---|
 | `AI_MONTHLY_CREDITS` / `AI_DAILY_REQUESTS` | 1 人あたりの上限を変える(既定 40 / 20) |
 | `AI_FREE_MONTHLY_BUDGET_YEN` | 無料の人全体の、1 か月の原価の上限(円。既定 3000) |
+| `AI_PRO_MONTHLY_CREDITS` / `AI_PRO_DAILY_REQUESTS` | Pro の上限を変える(既定 600 / 100) |
 | `AI_UNLIMITED_EMAILS` | 上限なしで使える人(運営)のメールアドレス。カンマ区切り。使用量は記録する |
 
 本番では `pnpm cdk deploy --all -c aiUnlimitedEmails=you@example.com` で渡す(公開リポジトリなので cdk.json には書かない)。
@@ -127,6 +129,8 @@ filter msg = "ai-blocked"
 0 からシェーダーを学び、デモを作って投稿できるところまでのコース。全 30 回(4 部)、1 回 30〜60 分。ログインは要らず、
 終えた回はブラウザ(localStorage)に覚える。ヘッダーのナビの Learn から入る。
 
+全 30 回とも無料で、ログインなしで読める(課金の対象にしない。検索と告知から人を呼ぶ入口なので)。
+
 - レッスンは `src/lib/learn/lessons/NN-slug.ts` に 1 回 1 ファイル。並び順と部の分け方は `src/lib/learn/course.ts`
 - 本文は日本語と英語を並べて持つ(`{ ja, en }`)。サーバーで見る人の言語だけに絞ってからブラウザに渡す(`localize.ts`)
 - ブロックは見出し・段落・箇条書き・補足・読み取り専用のコード・**書き換えられるコードとプレビュー(playground)**・
@@ -151,6 +155,87 @@ filter msg = "ai-blocked"
   `/stage` の slug の URL からも外れる
 - 本番では `pnpm cdk deploy --all -c adminEmails=you@example.com` で渡す。ローカルでは `.env.local` に `ADMIN_EMAILS`
 - 通報は作品と同じ表に `report#<作品の slug>#<ユーザー ID>` の行として入る。作品の行の `reportCount` が通報した人の数
+
+## 課金(Pro と追加クレジット)
+
+issue #42 の設計。閲覧・編集・投稿・配信背景は無料のまま、Learn の全 30 回も無料のまま、原価のかかる AI にだけ値段を付ける。決済は Stripe。
+
+| | 値段(税込) | 中身 |
+|---|---|---|
+| 無料 | ¥0 | AI 月 40 クレジット・1 日 20 回(Claude 以外)、Learn 全 30 回 |
+| Pro | ¥600 / 月、¥6,000 / 年(日本の外は US$4 / US$40) | AI 月 600 クレジット・1 日 100 回、Claude も選べる |
+| 追加クレジット | ¥500 で 500(日本の外は US$3.50) | 今月の枠を使い切ったあとに使う。発行から 6 か月で失効 |
+
+値段は `src/lib/billing/plans.ts` が正(画面の表示と、Stripe に価格を作るスクリプトの両方が読む)。
+運営(`AI_UNLIMITED_EMAILS`)は払わなくても Pro と同じに使える。
+
+**仕組み**
+
+- 料金は `/pricing`、自分のプランは `/me/billing`(アカウントのメニューの「プランと支払い」)、特定商取引法の表記は `/legal/commerce`
+- 買うボタン → `POST /api/billing/checkout` が Stripe Checkout を作る → 支払い → `/me/billing` に戻る
+- 支払いの結果は 2 つの道で記録に写す(どちらが先でも、何度来ても同じ結果になる。`src/lib/server/billingSync.ts`)
+  - Stripe の webhook(`POST /api/billing/webhook`。署名を確かめる)
+  - 戻ってきた `/me/billing` が呼ぶ `POST /api/billing/sync`(webhook が遅れても、戻ってすぐ Pro になるように)
+- 記録は作品と同じ表の `billing#<ユーザー ID>` の行(Stripe の顧客 ID・契約の写し・追加クレジット)。
+  契約の状態は、通知の中身ではなく毎回 Stripe から読み直して上書きする(通知の順番が前後しても最新になる)
+- 解約・支払い方法の変更・月払い ↔ 年払い・領収書は Stripe の顧客ポータル(`POST /api/billing/portal`)
+- 更新の支払いに失敗しても、Stripe が再試行している間(`past_due`)は Pro のまま。再試行が尽きると Stripe が解約する
+
+**ローカルで試す(テストモード)**
+
+1. Stripe のダッシュボードをテストモードにして、秘密鍵(`sk_test_…`)を取る
+2. 商品・価格・顧客ポータルの設定を作る(何度実行しても同じものを 2 つ作らない)
+
+   ```sh
+   STRIPE_SECRET_KEY=sk_test_... node scripts/stripe-setup.mts
+   ```
+
+3. [Stripe CLI](https://docs.stripe.com/stripe-cli) で webhook をローカルに転送する。表示された `whsec_…` を控える
+
+   ```sh
+   stripe listen --forward-to localhost:3000/api/billing/webhook
+   ```
+
+4. `.env.local` に入れて `pnpm dev` を再起動する
+
+   ```sh
+   STRIPE_SECRET_KEY=sk_test_...
+   STRIPE_WEBHOOK_SECRET=whsec_...
+   ```
+
+5. `/pricing` から買う。カード番号は Stripe のテスト用の `4242 4242 4242 4242`(期限は未来の日付、CVC は何でもよい)
+
+テストモードの間は、料金ページとプランのページに「テスト中」と出る。
+
+**本番で売る前に**
+
+1. `src/lib/billing/commerce.ts` に問い合わせ先のメールアドレスを入れる(氏名・住所・電話番号は「請求があれば開示」で省略できる)。
+   メールアドレスが入るまでは、本番の鍵(`sk_live_…`)では買うボタンが出ず、API も断る
+2. 利用規約(有料プランの条)と特定商取引法の表記を、専門家に確認してもらう
+3. 本番の鍵で `node scripts/stripe-setup.mts` を実行する
+4. ダッシュボードの「開発者 → Webhook」で宛先を作る。URL は `https://<サイト>/api/billing/webhook`、通知は
+   `checkout.session.completed`・`checkout.session.async_payment_succeeded`・`customer.subscription.created`・
+   `customer.subscription.updated`・`customer.subscription.deleted`・`customer.subscription.paused`・`customer.subscription.resumed`
+5. 鍵を SSM パラメータストアに入れる(SecureString。Lambda はここから読む。CloudFormation に鍵を残さないため CDK では作らない)
+
+   ```sh
+   aws ssm put-parameter --region ap-northeast-1 --type SecureString --name /shaders-art/stripe/secret-key --value sk_live_...
+   aws ssm put-parameter --region ap-northeast-1 --type SecureString --name /shaders-art/stripe/webhook-secret --value whsec_...
+   ```
+
+   Lambda は鍵を一度読んだら使い回す(無いときは 5 分おきに読み直す)。鍵を入れ替えたら Lambda を作り直す(デプロイし直す)
+6. Stripe の「設定 → ビジネス」で、明細書に出る名前やサポートの連絡先を入れる
+
+**ログ(CloudWatch Logs Insights)**
+
+```
+filter msg like /^billing-/
+| stats count(*) by bin(1d), msg
+```
+
+`billing-checkout`(Checkout を作った)・`billing-subscription`(契約を写した。`status` 付き)・`billing-credits`(追加クレジットを足した)・
+`billing-webhook`・`billing-unknown-user`(誰のものか分からない契約。ダッシュボードで手で作ったものなど)。
+追加クレジットが足りずに引けなかった分は `ai-credits-unpaid`。
 
 ## デプロイ
 

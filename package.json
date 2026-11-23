@@ -21,6 +21,7 @@
     "@anthropic-ai/sdk": "^0.135.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1152.0",
     "@aws-sdk/client-dynamodb": "^3.1141.0",
+    "@aws-sdk/client-ssm": "3.1141.0",
     "@aws-sdk/lib-dynamodb": "^3.1141.0",
     "@frost-ui/react": "^0.1.0",
     "@frost-ui/tokens": "^0.1.0",
@@ -29,6 +30,7 @@
     "next": "^16.2.9",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "stripe": "23.0.1",
     "three": "^0.183.0"
   },
   "devDependencies": {
