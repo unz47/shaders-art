@@ -3,7 +3,7 @@
 import Link from "@/components/Link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
-import { Button } from "@frost-ui/react/atoms/button";
+import { Button, buttonVariants } from "@frost-ui/react/atoms/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { CodeBlock } from "@/components/CodeBlock";
@@ -11,8 +11,8 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
 import { HiddenNotice, ReportButton, WorkManageMenu } from "@/components/WorkModeration";
-import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
-import { useI18n } from "@/lib/i18n/client";
+import { embedSnippet, encodeSource, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { isPublicWork } from "@/lib/moderation";
 import { findLicense, licenseUrl } from "@/lib/submission";
 import { getWork, type WorkDetail as Work } from "@/lib/works";
@@ -32,6 +32,7 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
   const [state, setState] = useState<State>(initial ? { status: "found", work: initial } : { status: "loading" });
   const toast = useToast();
   const { locale, t } = useI18n();
+  const localize = useLocalize();
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +64,26 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
       cancelled = true;
     };
   }, [state]);
+
+  // 「エディタで開く」の行き先。コードを # に入れて /edit に渡す(学習の「/edit で開く」と同じ)。
+  // 圧縮が非同期なので、押す前に作っておく。作れないうちは何も入っていない /edit を開く
+  const [editorHref, setEditorHref] = useState("/edit");
+  const editorSource = state.status === "found" ? state.work.source : null;
+  useEffect(() => {
+    if (editorSource === null) return;
+    let cancelled = false;
+    encodeSource(editorSource).then(
+      (token) => {
+        if (!cancelled) setEditorHref(`/edit#src=${token}`);
+      },
+      () => {
+        if (!cancelled) setEditorHref("/edit");
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [editorSource]);
 
   const copyText = useCallback(
     (text: string, title: string, description: string) => {
@@ -136,14 +157,16 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
   ];
 
   return (
+    // md 以上は画面の高さに収めて「左にコード・右に描画」。md 未満(スマホ)は縦に積んでページごとスクロールし、
+    // 「題名 → 作品 → 説明 → コード」の順に見せる(左の欄を display: contents にして、中身を order で並べ替える)。
     // 高さはスマホ幅の下のタブバー(--tabbar-h)の分を引く
-    <div className="flex h-[calc(100dvh-var(--tabbar-h))] flex-col overflow-hidden">
+    <div className="flex flex-col md:h-[calc(100dvh-var(--tabbar-h))] md:overflow-hidden">
       <Header />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col md:flex-row md:overflow-hidden">
         {/* 左: コード */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
-            <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col max-md:contents md:overflow-hidden">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-subtle px-4 py-3 md:flex-nowrap md:px-6">
+            <div className="min-w-0 flex-1 max-md:basis-full">
               <h1 className="truncate text-sm font-medium text-text-primary">{work.title}</h1>
               <p className="text-xs tracking-wide text-text-secondary">
                 {work.author} · {published}
@@ -200,21 +223,23 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
             >
               {t.work.copyCode}
             </Button>
-            {/* /edit はまだ無いので、いまは見た目だけ */}
-            <Button variant="primary" size="sm" disabled>
+            {/* # 以降は /edit が開いたときに読むので、クライアント側の遷移ではなく普通のリンクで開く */}
+            <a href={localize(editorHref)} className={buttonVariants({ variant: "primary", size: "sm" })}>
               {t.work.openInEditor}
-            </Button>
+            </a>
           </div>
           <HiddenNotice work={work} />
-          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
+          <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2 font-mono text-[11px] text-text-muted max-md:order-3 max-md:border-t md:px-6">
             <span className="flex-1">main.glsl</span>
             <span>vec4 render(vec2 uv, vec2 p)</span>
           </div>
-          <CodeBlock source={work.source} />
+          <div className="flex min-h-0 flex-1 flex-col max-md:order-3">
+            <CodeBlock source={work.source} />
+          </div>
         </div>
 
         {/* 右: ステージ(実際に GLSL を描画) */}
-        <div className="flex w-full max-w-[45%] flex-col gap-4 overflow-auto border-l border-border-subtle p-4">
+        <div className="flex w-full flex-col gap-4 p-4 max-md:order-2 md:max-w-[45%] md:overflow-auto md:border-l md:border-border-subtle">
           <ShaderStage source={work.source} bytes={work.bytes} />
 
           <div className="flex flex-col gap-2">

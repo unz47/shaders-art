@@ -124,7 +124,8 @@ export function ShaderStage({ source, bytes }: { source: string; bytes: number }
     <>
       <div
         ref={containerRef}
-        className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle [&>canvas]:h-full [&>canvas]:w-full"
+        // md 未満(スマホ)は縦に積んだページの中に置くので、親の高さに頼らず幅から高さを決める
+        className="relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle max-md:aspect-square max-md:flex-none [&>canvas]:h-full [&>canvas]:w-full"
       >
         {error && (
           <div className="absolute inset-0 grid place-items-center bg-bg-base/90 p-4 text-center text-sm text-text-muted">
@@ -133,7 +134,7 @@ export function ShaderStage({ source, bytes }: { source: string; bytes: number }
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" size="sm" onClick={() => setPlaying((p) => !p)}>
           {playing ? t.preview.pause : t.preview.play}
         </Button>

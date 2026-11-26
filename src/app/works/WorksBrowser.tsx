@@ -86,7 +86,8 @@ export function WorksBrowser({
           <SearchBox key={q} defaultValue={q} sort={sort} />
         </div>
         <div className="flex flex-wrap items-end gap-sp-md">
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {/* 並び替えと同じ行に入らない幅(スマホ)では、見出しを 1 行使って上に置く */}
+          <div className="flex min-w-0 flex-[1_1_12rem] flex-col gap-1.5">
             <h1 className="break-words text-2xl font-medium text-text-primary">{q ? t.works.searchTitle(q) : t.works.title}</h1>
             <p className="font-mono text-xs text-text-muted">{data ? `${data.total} works` : " "}</p>
           </div>
