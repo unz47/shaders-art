@@ -11,7 +11,8 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
 import { HiddenNotice, ReportButton, WorkManageMenu } from "@/components/WorkModeration";
-import { embedSnippet, encodeSource, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
+import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
+import { useEditorHref } from "@/lib/useEditorHref";
 import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { isPublicWork } from "@/lib/moderation";
 import { findLicense, licenseUrl } from "@/lib/submission";
@@ -65,25 +66,8 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
     };
   }, [state]);
 
-  // 「エディタで開く」の行き先。コードを # に入れて /edit に渡す(学習の「/edit で開く」と同じ)。
-  // 圧縮が非同期なので、押す前に作っておく。作れないうちは何も入っていない /edit を開く
-  const [editorHref, setEditorHref] = useState("/edit");
-  const editorSource = state.status === "found" ? state.work.source : null;
-  useEffect(() => {
-    if (editorSource === null) return;
-    let cancelled = false;
-    encodeSource(editorSource).then(
-      (token) => {
-        if (!cancelled) setEditorHref(`/edit#src=${token}`);
-      },
-      () => {
-        if (!cancelled) setEditorHref("/edit");
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [editorSource]);
+  // 「エディタで開く」の行き先。コードを # に入れて /edit に渡す(学習の「/edit で開く」と同じ)
+  const editorHref = useEditorHref(state.status === "found" ? state.work.source : null);
 
   const copyText = useCallback(
     (text: string, title: string, description: string) => {
