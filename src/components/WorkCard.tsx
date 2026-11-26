@@ -13,6 +13,13 @@ import type { WorkSummary } from "@/lib/works";
 // 枠は付けず、サムネ 16:10 + 2 行(タイトル…bytes / 作者 · 12 分前…お気に入りの数)。
 // 非公開の作品は「自分の作品」(/me)にだけ並ぶので、そこで見分けられるよう印を付ける
 // お気に入りの ♡ はサムネの右上に重ねる。リンクの中にボタンを入れられないので、リンクと並べて置く
+
+/**
+ * カードを並べる格子。スマホ幅でも 2 列にして、1 画面に 4〜6 作品見えるようにする(1 列だと 1 作品で画面の半分を使う)。
+ * 広い画面での列の数は、使う側で lg:grid-cols-… を足す
+ */
+export const WORK_GRID = "grid grid-cols-2 content-start gap-x-3 gap-y-6 sm:gap-x-sp-lg sm:gap-y-8";
+
 export function WorkCard({ work }: { work: WorkSummary }) {
   const now = useNow();
   const { t } = useI18n();

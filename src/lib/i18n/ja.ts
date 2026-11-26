@@ -107,6 +107,7 @@ export const ja = {
     codeCopied: "作品のコードをクリップボードに入れました。",
     copyFailed: "コピーできませんでした",
     openInEditor: "エディタで開く",
+    showAllCode: (lines: number) => `コードをすべて表示(${lines} 行)`,
   },
   edit: {
     presets: {

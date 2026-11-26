@@ -15,7 +15,7 @@ import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Pagination } from "@/components/Pagination";
 import { SearchBox } from "@/components/SearchBox";
-import { WorkCard } from "@/components/WorkCard";
+import { WORK_GRID, WorkCard } from "@/components/WorkCard";
 import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { ApiError, getWorks, type WorkSummary } from "@/lib/works";
 import {
@@ -81,7 +81,7 @@ export function WorksBrowser({
   return (
     <div className="flex min-h-dvh flex-col">
       <Header searchQuery={q} />
-      <main className="flex flex-1 flex-col gap-7 px-sp-xl pt-10">
+      <main className="flex flex-1 flex-col gap-7 px-4 pt-6 sm:px-sp-xl sm:pt-10">
         <div className="md:hidden">
           <SearchBox key={q} defaultValue={q} sort={sort} />
         </div>
@@ -157,7 +157,7 @@ export function WorksBrowser({
         {data && data.items.length > 0 && (
           <div
             aria-busy={loading}
-            className={`grid grid-cols-1 content-start gap-x-sp-lg gap-y-8 transition-opacity sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${
+            className={`${WORK_GRID} transition-opacity lg:grid-cols-3 xl:grid-cols-4 ${
               loading ? "opacity-50" : ""
             }`}
           >

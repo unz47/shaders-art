@@ -105,6 +105,7 @@ export const en: Dictionary = {
     codeCopied: "The code is on your clipboard.",
     copyFailed: "Couldn’t copy",
     openInEditor: "Open in editor",
+    showAllCode: (lines: number) => `Show all code (${lines} lines)`,
   },
   edit: {
     presets: {
