@@ -7,7 +7,7 @@ import { ShaderCodeEditor } from "@/components/ShaderCodeEditor";
 import { ShaderEditorPreview } from "@/components/ShaderEditorPreview";
 import { commit, createHistory, redo, undo } from "@/lib/editHistory";
 import { useI18n, useLocalize } from "@/lib/i18n/client";
-import { encodeSource } from "@/lib/stageUrl";
+import { useEditorHref } from "@/lib/useEditorHref";
 
 // 学習(/learn)の「書き換えられるコードとプレビュー」。/edit と同じエディタとプレビュー(ShaderCodeEditor・
 // ShaderEditorPreview)を小さくまとめたもの。
@@ -104,26 +104,6 @@ export function LazyShaderPreview({
       )}
     </div>
   );
-}
-
-/** コードを入れた /edit の URL。コードが変わるたびに作り直す(圧縮は非同期なので、押す前に用意しておく) */
-function useEditorHref(source: string): string {
-  const [href, setHref] = useState("/edit");
-  useEffect(() => {
-    let cancelled = false;
-    encodeSource(source).then(
-      (token) => {
-        if (!cancelled) setHref(`/edit#src=${token}`);
-      },
-      () => {
-        if (!cancelled) setHref("/edit");
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [source]);
-  return href;
 }
 
 export function PlaygroundFrame({

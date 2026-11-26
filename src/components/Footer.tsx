@@ -5,7 +5,7 @@ import { LanguageSwitch } from "@/components/LanguageSwitch";
 // Licenses と Terms は利用規約(/terms)、Privacy はプライバシーポリシー(/privacy)へのリンク。ほかはまだ見た目だけ。右に言語の切り替え(English / 日本語)
 export function Footer() {
   return (
-    <footer className="px-sp-xl pb-sp-xl pt-24">
+    <footer className="px-4 pb-sp-xl pt-16 sm:px-sp-xl sm:pt-24">
       <div className="flex flex-wrap items-baseline gap-x-sp-md gap-y-sp-xs border-t border-border-subtle pt-sp-sm">
         <div className="flex items-baseline gap-sp-xs whitespace-nowrap">
           <span className="text-sm font-medium text-text-primary">shaders.art</span>

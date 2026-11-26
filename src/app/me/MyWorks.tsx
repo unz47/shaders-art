@@ -11,7 +11,7 @@ import {
 } from "@frost-ui/react/molecules/empty-state";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
-import { WorkCard } from "@/components/WorkCard";
+import { WORK_GRID, WorkCard } from "@/components/WorkCard";
 import { loginHref, useSession } from "@/lib/useSession";
 import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { ApiError, getMyWorks, type WorkSummary } from "@/lib/works";
@@ -48,7 +48,7 @@ export function MyWorks() {
   return (
     <div className="flex min-h-dvh flex-col">
       <Header />
-      <main className="flex flex-1 flex-col gap-sp-lg px-sp-xl pb-sp-xl pt-8">
+      <main className="flex flex-1 flex-col gap-sp-lg px-4 pb-sp-xl pt-8 sm:px-sp-xl">
         <div className="flex items-baseline gap-sp-sm">
           <h1 className="text-lg font-medium text-text-primary">{t.me.myWorks}</h1>
           {state.status === "ready" && state.items.length > 0 && (
@@ -97,7 +97,7 @@ export function MyWorks() {
         )}
 
         {state.status === "ready" && state.items.length > 0 && (
-          <div className="grid grid-cols-1 content-start gap-x-sp-lg gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className={`${WORK_GRID} lg:grid-cols-3 xl:grid-cols-4`}>
             {state.items.map((work) => (
               <WorkCard key={work.slug} work={work} />
             ))}

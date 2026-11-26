@@ -2,11 +2,12 @@
 
 import Link from "@/components/Link";
 import { useEffect, useState } from "react";
+import { buttonVariants } from "@frost-ui/react/atoms/button";
 import { EmptyState, EmptyStateDescription, EmptyStateTitle } from "@frost-ui/react/molecules/empty-state";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { TodaysPick } from "@/components/TodaysPick";
-import { WorkCard } from "@/components/WorkCard";
+import { WORK_GRID, WorkCard } from "@/components/WorkCard";
 import { WorkTile } from "@/components/WorkTile";
 import { useFavorites } from "@/lib/useFavorites";
 import { useI18n } from "@/lib/i18n/client";
@@ -96,9 +97,10 @@ export function HomePage({ initialHome }: { initialHome: HomeSelection<WorkSumma
   return (
     <div className="flex min-h-dvh flex-col">
       <Header />
-      <main className="flex flex-1 flex-col gap-14 px-sp-xl pt-8">
+      {/* スマホ幅は左右の余白を詰めて、作品を大きく見せる */}
+      <main className="flex flex-1 flex-col gap-10 px-4 pt-6 sm:gap-14 sm:px-sp-xl sm:pt-8">
         {/* サイトの一言と、学習コースへの入口。はじめて来た人が、何のサイトかと、どこから始めればよいかが分かるように */}
-        <div className="-mb-8 flex flex-wrap items-baseline gap-x-sp-md gap-y-1">
+        <div className="-mb-6 flex sm:-mb-8 flex-wrap items-baseline gap-x-sp-md gap-y-1">
           <h1 className="sr-only">{t.home.heading}</h1>
           <p className="text-sm text-text-secondary">{t.home.intro}</p>
           <Link href="/learn" className="text-sm text-text-primary underline decoration-accent-default underline-offset-[3px] hover:text-accent-default">
@@ -142,7 +144,7 @@ export function HomePage({ initialHome }: { initialHome: HomeSelection<WorkSumma
         {home && myFavorites.length > 0 && (
           <section className="flex flex-col gap-5">
             <SectionHeading title="Your favorites" note={t.home.yourFavorites(myFavorites.length)} href="/me/favorites" />
-            <div className="grid grid-cols-1 gap-x-sp-lg gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={`${WORK_GRID} lg:grid-cols-4`}>
               {myFavorites.slice(0, FAVORITES_ON_HOME).map((work) => (
                 <WorkCard key={work.slug} work={work} />
               ))}
@@ -160,11 +162,20 @@ export function HomePage({ initialHome }: { initialHome: HomeSelection<WorkSumma
         {home && home.latest.length > 0 && (
           <section className="flex flex-col gap-5">
             <SectionHeading title="New" note={t.home.latest(home.total)} href={worksHref({ sort: "new" })} />
-            <div className="grid grid-cols-1 gap-x-sp-lg gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={`${WORK_GRID} lg:grid-cols-4`}>
               {home.latest.map((work) => (
                 <WorkCard key={work.slug} work={work} />
               ))}
             </div>
+            {/* 見出しの横の「すべて見る」は、下までスクロールした人(特にスマホ)の目に入らないので、一覧の下にも置く */}
+            {home.total > home.latest.length && (
+              <Link
+                href={worksHref({ sort: "new" })}
+                className={`${buttonVariants({ variant: "secondary" })} self-center max-sm:w-full`}
+              >
+                {t.works.showAll}
+              </Link>
+            )}
           </section>
         )}
       </main>

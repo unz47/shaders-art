@@ -713,16 +713,21 @@ export default function EditPage() {
   }
 
   return (
+    // md 以上は画面の高さに収めて「左にコード・右にプレビュー」。md 未満(スマホ)は縦に積んでページごとスクロールし、
+    // プレビューを上、コードと AI 欄をその下(画面の高さの 75%)に置く。
     // 高さはスマホ幅の下のタブバー(--tabbar-h)の分を引く
-    <div className="flex h-[calc(100dvh-var(--tabbar-h))] flex-col overflow-hidden">
+    <div className="flex flex-col md:h-[calc(100dvh-var(--tabbar-h))] md:overflow-hidden">
       <Header showSearch={false} />
       {/* 画面には出さない見出し(読み上げと検索エンジン向け)。題名の欄は投稿する作品の題名なので、見出しにはしない */}
       <h1 className="sr-only">{t.meta.editTitle}</h1>
-      <div ref={columnsRef} className="flex flex-1 overflow-hidden">
+      <div ref={columnsRef} className="flex flex-1 flex-col md:flex-row md:overflow-hidden">
         {/* 左: コード(編集可能) */}
-        <div ref={codeColumnRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
-            <div className="min-w-0 flex-1">
+        <div
+          ref={codeColumnRef}
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden max-md:order-2 max-md:h-[75dvh] max-md:flex-none max-md:border-t max-md:border-border-subtle"
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-subtle px-4 py-3 md:flex-nowrap md:px-6">
+            <div className="min-w-0 flex-1 max-md:basis-full">
               {/* その場で編集できるタイトル。投稿ダイアログのタイトル欄と同じ値 */}
               <input
                 aria-label={t.edit.titleLabel}
@@ -832,19 +837,22 @@ export default function EditPage() {
           />
         </div>
 
-        <SplitHandle
-          containerRef={columnsRef}
-          label={t.edit.codePreviewBoundary}
-          ratio={previewRatio}
-          minStartPx={MIN_CODE_WIDTH_PX}
-          minEndPx={MIN_PREVIEW_WIDTH_PX}
-          onChange={changePreviewRatio}
-          onReset={() => changePreviewRatio(DEFAULT_PREVIEW_RATIO)}
-        />
+        {/* 左右の境界。縦に積むスマホ幅では使わない */}
+        <div className="contents max-md:hidden">
+          <SplitHandle
+            containerRef={columnsRef}
+            label={t.edit.codePreviewBoundary}
+            ratio={previewRatio}
+            minStartPx={MIN_CODE_WIDTH_PX}
+            minEndPx={MIN_PREVIEW_WIDTH_PX}
+            onChange={changePreviewRatio}
+            onReset={() => changePreviewRatio(DEFAULT_PREVIEW_RATIO)}
+          />
+        </div>
 
-        {/* 右: ステージ(ライブプレビュー + 審査チェック)。幅は境界のドラッグで変わる */}
+        {/* 右: ステージ(ライブプレビュー + 審査チェック)。幅は境界のドラッグで変わる(スマホ幅は画面いっぱい) */}
         <div
-          className="flex shrink-0 flex-col gap-4 overflow-auto p-4"
+          className="flex shrink-0 flex-col gap-4 p-4 max-md:order-1 max-md:w-full! max-md:min-w-0! md:overflow-auto"
           style={{ width: `${previewRatio * 100}%`, minWidth: MIN_PREVIEW_WIDTH_PX }}
         >
           {/* 全画面にするのはこの枠。YouTube などと同じく右下のボタン(またはダブルクリック)で
@@ -855,7 +863,7 @@ export default function EditPage() {
             onPointerMove={showStageChrome}
             onPointerLeave={hideStageChrome}
             onDoubleClick={toggleFullscreen}
-            className={`relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle [&:fullscreen]:rounded-none [&:fullscreen]:border-0 ${
+            className={`relative min-h-0 flex-1 overflow-hidden rounded-surface border border-border-subtle max-md:aspect-video max-md:flex-none [&:fullscreen]:rounded-none [&:fullscreen]:border-0 ${
               fullscreen.active && pointerIdle ? "cursor-none" : ""
             }`}
           >
@@ -883,7 +891,7 @@ export default function EditPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => setPlaying((p) => !p)}>
               {playing ? t.preview.pause : t.preview.play}
             </Button>

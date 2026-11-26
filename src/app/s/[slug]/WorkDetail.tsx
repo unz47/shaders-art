@@ -3,7 +3,7 @@
 import Link from "@/components/Link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Badge } from "@frost-ui/react/atoms/badge";
-import { Button } from "@frost-ui/react/atoms/button";
+import { Button, buttonVariants } from "@frost-ui/react/atoms/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@frost-ui/react/organisms/menu";
 import { useToast } from "@frost-ui/react/organisms/toast";
 import { CodeBlock } from "@/components/CodeBlock";
@@ -12,7 +12,8 @@ import { Header } from "@/components/Header";
 import { ShaderStage } from "@/components/ShaderStage";
 import { HiddenNotice, ReportButton, WorkManageMenu } from "@/components/WorkModeration";
 import { embedSnippet, stageUrlForSource, stageUrlForWork } from "@/lib/stageUrl";
-import { useI18n } from "@/lib/i18n/client";
+import { useEditorHref } from "@/lib/useEditorHref";
+import { useI18n, useLocalize } from "@/lib/i18n/client";
 import { isPublicWork } from "@/lib/moderation";
 import { findLicense, licenseUrl } from "@/lib/submission";
 import { getWork, type WorkDetail as Work } from "@/lib/works";
@@ -32,6 +33,7 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
   const [state, setState] = useState<State>(initial ? { status: "found", work: initial } : { status: "loading" });
   const toast = useToast();
   const { locale, t } = useI18n();
+  const localize = useLocalize();
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +65,9 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
       cancelled = true;
     };
   }, [state]);
+
+  // 「エディタで開く」の行き先。コードを # に入れて /edit に渡す(学習の「/edit で開く」と同じ)
+  const editorHref = useEditorHref(state.status === "found" ? state.work.source : null);
 
   const copyText = useCallback(
     (text: string, title: string, description: string) => {
@@ -136,85 +141,99 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
   ];
 
   return (
+    // md 以上は画面の高さに収めて「左にコード・右に描画」。md 未満(スマホ)は縦に積んでページごとスクロールし、
+    // 「題名 → 作品 → 説明 → コード」の順に見せる(左の欄を display: contents にして、中身を order で並べ替える)。
     // 高さはスマホ幅の下のタブバー(--tabbar-h)の分を引く
-    <div className="flex h-[calc(100dvh-var(--tabbar-h))] flex-col overflow-hidden">
+    <div className="flex flex-col md:h-[calc(100dvh-var(--tabbar-h))] md:overflow-hidden">
       <Header />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col md:flex-row md:overflow-hidden">
         {/* 左: コード */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-sm font-medium text-text-primary">{work.title}</h1>
-              <p className="text-xs tracking-wide text-text-secondary">
-                {work.author} · {published}
-              </p>
+        <div className="flex min-w-0 flex-1 flex-col max-md:contents md:overflow-hidden">
+          {/* md 以上は 1 行(題名 … ボタン)。スマホ幅は「題名と ♡」を作品の上に、ほかのボタンは説明の下(コードの上)に分ける */}
+          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3 max-md:contents">
+            <div className="flex min-w-0 flex-1 items-center gap-3 max-md:order-1 max-md:px-4 max-md:pt-4">
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-sm font-medium text-text-primary max-md:text-lg">{work.title}</h1>
+                <p className="text-xs tracking-wide text-text-secondary">
+                  {work.author} · {published}
+                </p>
+              </div>
+              <FavoriteButton work={work} variant="inline" />
             </div>
-            <FavoriteButton work={work} variant="inline" />
-            <WorkManageMenu work={work} onChange={(next) => setState({ status: "found", work: next })} />
-            <ReportButton
-              work={work}
-              onReported={() =>
-                setState({ status: "found", work: { ...work, viewer: work.viewer && { ...work.viewer, reported: true } } })
-              }
-            />
-            <Menu>
-              <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!stageUrl} />}>{t.work.streamEmbed}</MenuTrigger>
-              <MenuContent align="end">
-                <MenuItem
-                  onClick={() =>
-                    stageUrl &&
-                    copyText(
-                      stageUrl,
-                      t.work.stageUrlCopied,
-                      t.work.stageUrlHint,
-                    )
-                  }
-                >
-                  {t.work.copyStageUrl}
-                </MenuItem>
-                <MenuItem
-                  onClick={() =>
-                    stageUrl &&
-                    copyText(
-                      embedSnippet(stageUrl, work.title),
-                      t.work.embedCopied,
-                      t.work.embedHint,
-                    )
-                  }
-                >
-                  {t.work.copyEmbed}
-                </MenuItem>
-              </MenuContent>
-            </Menu>
-            <Button
-              variant="ghost"
-              size="sm"
-              // コードはそのまま読めるのでコピーも止めないが、サイトの外での使い方はライセンスに従ってもらう
-              onClick={() =>
-                copyText(
-                  work.source,
-                  t.work.copied,
-                  license ? t.work.copiedUnder(licenseLabel, t.license[license.id].reuse) : t.work.codeCopied,
-                )
-              }
-            >
-              {t.work.copyCode}
-            </Button>
-            {/* /edit はまだ無いので、いまは見た目だけ */}
-            <Button variant="primary" size="sm" disabled>
-              {t.work.openInEditor}
-            </Button>
+            <div className="flex items-center gap-3 max-md:order-3 max-md:flex-wrap max-md:gap-2 max-md:px-4 max-md:pb-4">
+              <WorkManageMenu work={work} onChange={(next) => setState({ status: "found", work: next })} />
+              <ReportButton
+                work={work}
+                onReported={() =>
+                  setState({ status: "found", work: { ...work, viewer: work.viewer && { ...work.viewer, reported: true } } })
+                }
+              />
+              <Menu>
+                <MenuTrigger render={<Button variant="ghost" size="sm" disabled={!stageUrl} />}>{t.work.streamEmbed}</MenuTrigger>
+                <MenuContent align="end">
+                  <MenuItem
+                    onClick={() =>
+                      stageUrl &&
+                      copyText(
+                        stageUrl,
+                        t.work.stageUrlCopied,
+                        t.work.stageUrlHint,
+                      )
+                    }
+                  >
+                    {t.work.copyStageUrl}
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() =>
+                      stageUrl &&
+                      copyText(
+                        embedSnippet(stageUrl, work.title),
+                        t.work.embedCopied,
+                        t.work.embedHint,
+                      )
+                    }
+                  >
+                    {t.work.copyEmbed}
+                  </MenuItem>
+                </MenuContent>
+              </Menu>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="max-md:-order-1"
+                // コードはそのまま読めるのでコピーも止めないが、サイトの外での使い方はライセンスに従ってもらう
+                onClick={() =>
+                  copyText(
+                    work.source,
+                    t.work.copied,
+                    license ? t.work.copiedUnder(licenseLabel, t.license[license.id].reuse) : t.work.codeCopied,
+                  )
+                }
+              >
+                {t.work.copyCode}
+              </Button>
+              {/* # 以降は /edit が開いたときに読むので、クライアント側の遷移ではなく普通のリンクで開く */}
+              {/* スマホ幅では、いちばん押してほしいボタンなので先頭に出す(その次がコードのコピー) */}
+              <a
+                href={localize(editorHref)}
+                className={`${buttonVariants({ variant: "primary", size: "sm" })} max-md:-order-2`}
+              >
+                {t.work.openInEditor}
+              </a>
+            </div>
           </div>
-          <HiddenNotice work={work} />
-          <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-2 font-mono text-[11px] text-text-muted">
+          <div className="max-md:order-1">
+            <HiddenNotice work={work} />
+          </div>
+          <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2 font-mono text-[11px] text-text-muted max-md:order-4 max-md:border-t md:px-6">
             <span className="flex-1">main.glsl</span>
             <span>vec4 render(vec2 uv, vec2 p)</span>
           </div>
-          <CodeBlock source={work.source} />
+          <MobileCollapsibleCode source={work.source} />
         </div>
 
         {/* 右: ステージ(実際に GLSL を描画) */}
-        <div className="flex w-full max-w-[45%] flex-col gap-4 overflow-auto border-l border-border-subtle p-4">
+        <div className="flex w-full flex-col gap-4 p-4 max-md:order-2 max-md:pt-3 md:max-w-[45%] md:overflow-auto md:border-l md:border-border-subtle">
           <ShaderStage source={work.source} bytes={work.bytes} />
 
           <div className="flex flex-col gap-2">
@@ -235,6 +254,37 @@ export function WorkDetail({ slug, initial }: { slug: string; initial: Work | nu
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** スマホ幅で最初に見せるコードの行数。これより数行長いだけなら畳まない */
+const COLLAPSED_LINES = 16;
+
+/**
+ * スマホ幅では、コードは最初の 16 行だけ見せて「コードをすべて表示」で開く。作品を見に来た人が、
+ * 長いコードを延々とスクロールしなくて済むように。md 以上は今までどおり全部を欄の中でスクロールして読む
+ */
+function MobileCollapsibleCode({ source }: { source: string }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const lines = source.split("\n").length;
+  const collapsed = !expanded && lines > COLLAPSED_LINES + 4;
+
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col max-md:order-4">
+      {/* 畳んでいるときは、外側の箱で切る(CodeBlock の中でスクロールさせると、ページのスクロールと取り合う)。
+          高さは 16 行(22px ずつ)と上下の余白 */}
+      <div className={`flex min-h-0 flex-1 flex-col ${collapsed ? "max-md:block max-md:max-h-96 max-md:overflow-hidden" : ""}`}>
+        <CodeBlock source={source} />
+      </div>
+      {collapsed && (
+        <div className="absolute inset-x-0 bottom-0 flex justify-center bg-linear-to-b from-transparent to-bg-base pb-4 pt-16 md:hidden">
+          <Button variant="secondary" size="sm" onClick={() => setExpanded(true)}>
+            {t.work.showAllCode(lines)}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
