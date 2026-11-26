@@ -6,7 +6,7 @@ import { findLicense, licenseUrl } from "@/lib/submission";
 import type { Work } from "@/lib/works";
 
 // 構造化データ(schema.org)。components/JsonLd でページに埋める。
-//   トップ   … WebSite(サイト内検索の入口つき)
+//   トップ   … WebSite
 //   /learn   … Course(無料・オンライン・初心者向け)と、30 回分の LearningResource
 //   各回     … LearningResource(Course の一部)とパンくず
 //   作品     … SoftwareSourceCode(GLSL)とパンくず
@@ -40,11 +40,8 @@ export function websiteData(locale: Locale, t: Dictionary) {
     inLanguage: locale,
     description: t.meta.description,
     publisher: PUBLISHER,
-    potentialAction: {
-      "@type": "SearchAction",
-      target: { "@type": "EntryPoint", urlTemplate: `${absoluteUrl(locale, "/works")}?q={search_term_string}` },
-      "query-input": "required name=search_term_string",
-    },
+    // サイト内検索の入口(SearchAction)は書かない。Google は 2024 年 11 月に検索結果の検索窓をやめていて使われず、
+    // 雛形の URL(/works?q={search_term_string})をそのまま読みに来て 400 になり、Search Console に 4xx として出ていた
   };
 }
 
